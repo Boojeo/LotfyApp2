@@ -118,3 +118,7 @@ class BrokerAdapter(ABC):
     @abstractmethod
     def probe_partial_close(self) -> PartialCloseProbe:
         ...
+
+    def search_markets(self, term: str) -> List[Dict[str, Any]]:
+        """Find instruments by name so a user can discover the epic to trade."""
+        raise NotImplementedError(f"{self.name} cannot search markets")

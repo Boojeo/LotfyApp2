@@ -233,6 +233,19 @@ class PositionTests(unittest.TestCase):
         self.assertEqual(broker.market_rules("GOLD").min_deal_size, 0.1)
 
 
+class MarketSearchTests(unittest.TestCase):
+    def test_searching_returns_the_epics_a_user_can_trade(self):
+        broker, _ = build({
+            "GET /api/v1/markets": [FakeResponse(200, {"markets": [
+                {"epic": "GOLD", "instrumentName": "Gold", "marketStatus": "TRADEABLE"},
+                {"epic": "SILVER", "instrumentName": "Silver", "marketStatus": "TRADEABLE"},
+            ]})],
+        })
+        broker.connect()
+        found = broker.search_markets("old")
+        self.assertEqual([market["epic"] for market in found], ["GOLD", "SILVER"])
+
+
 class ProbeTests(unittest.TestCase):
     def _probe(self, hedging: Any, delete_error: str) -> Any:
         preferences = (

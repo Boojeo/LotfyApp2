@@ -170,6 +170,13 @@ class PaperBroker(BrokerAdapter):
     def confirm(self, deal_reference: str) -> Dict[str, Any]:
         return self._confirms.get(deal_reference, {"dealStatus": "UNKNOWN"})
 
+    def search_markets(self, term: str) -> List[Dict[str, Any]]:
+        return [
+            {"epic": epic, "instrumentName": epic, "marketStatus": "TRADEABLE"}
+            for epic in sorted(self._rules)
+            if term.lower() in epic.lower()
+        ]
+
     def probe_partial_close(self) -> PartialCloseProbe:
         strategy = (
             PartialCloseStrategy.NETTING_OFFSET if not self.hedging

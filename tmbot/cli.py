@@ -45,6 +45,11 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("epic", nargs="?", help="epic to analyse (default: the whole watchlist)")
     report.add_argument("--markdown", action="store_true", help="print the full markdown report")
 
+    markets = sub.add_parser(
+        "markets", help="search for an instrument to find the epic name to use"
+    )
+    markets.add_argument("term", help="part of the instrument name, e.g. gold")
+
     sub.add_parser("status", help="show managed positions and ladder state")
     sub.add_parser("positions", help="list raw open positions at the broker")
     sub.add_parser("probe", help="run the partial-close capability probe and exit")
@@ -120,6 +125,21 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"account {account.get('accountId')} ({account.get('accountName', '')})")
             print(f"currency {account.get('currency')}  balance {account.get('balance')}")
             print(f"hedging mode: {broker.hedging_mode()}")
+            return 0
+
+        if args.command == "markets":
+            found = broker.search_markets(args.term)
+            if not found:
+                print(f"nothing matched {args.term!r}")
+                return 1
+            print(f"{'EPIC':<20} {'INSTRUMENT':<38} STATUS")
+            for market in found[:40]:
+                print(
+                    f"{market.get('epic', ''):<20} "
+                    f"{market.get('instrumentName', '')[:38]:<38} "
+                    f"{market.get('marketStatus', '')}"
+                )
+            print("\nUse the EPIC value in your config watchlist and in report/plan commands.")
             return 0
 
         if args.command == "positions":

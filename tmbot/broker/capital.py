@@ -281,6 +281,14 @@ class CapitalComBroker(BrokerAdapter):
         unique: Dict[Any, Candle] = {candle.ts: candle for candle in collected}
         return [unique[key] for key in sorted(unique)][-limit:]
 
+    def search_markets(self, term: str) -> List[Dict[str, Any]]:
+        self.ensure_session()
+        data = self._request(
+            "GET", "/api/v1/markets", params={"searchTerm": term},
+            description=f"search markets {term!r}",
+        )
+        return data.get("markets", [])
+
     # ------------------------------------------------------------------ positions
 
     def positions(self) -> List[BrokerPosition]:
