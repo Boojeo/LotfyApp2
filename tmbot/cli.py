@@ -1,0 +1,173 @@
+"""Command line entry points."""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import signal
+import sys
+from typing import List, Optional
+
+from . import config as config_module
+from .analysis.report import ReportBuilder, render_markdown, render_text
+from .broker.capital import CapitalComBroker
+from .config import Config
+from .errors import TmbotError
+from .manage.supervisor import Supervisor
+from .notify.base import ConsoleNotifier, MultiNotifier, Notifier
+from .store import Store
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tmbot",
+        description=(
+            "Semi-automated trade manager for Capital.com: you open the trade, "
+            "it runs the exits."
+        ),
+    )
+    parser.add_argument(
+        "--env", choices=("demo", "live"), required=True,
+        help="which Capital.com environment to connect to. Deliberately has no "
+             "default so a live account is never touched by accident.",
+    )
+    parser.add_argument("--config", help="path to a YAML or JSON config file")
+    parser.add_argument("--log-level", default=None, help="DEBUG, INFO, WARNING, ...")
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="evaluate and log every decision but send no order modifications",
+    )
+
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("run", help="start the management daemon")
+
+    report = sub.add_parser("report", help="build the daily report for one epic or the watchlist")
+    report.add_argument("epic", nargs="?", help="epic to analyse (default: the whole watchlist)")
+    report.add_argument("--markdown", action="store_true", help="print the full markdown report")
+
+    sub.add_parser("status", help="show managed positions and ladder state")
+    sub.add_parser("positions", help="list raw open positions at the broker")
+    sub.add_parser("probe", help="run the partial-close capability probe and exit")
+    sub.add_parser("account", help="show the connected account")
+    return parser
+
+
+def _configure_logging(level: str) -> None:
+    logging.basicConfig(
+        level=getattr(logging, level.upper(), logging.INFO),
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+
+def _load_config(args: argparse.Namespace) -> Config:
+    config = config_module.load(args.config)
+    config.broker.environment = args.env
+    if args.dry_run:
+        config.dry_run = True
+    if args.log_level:
+        config.log_level = args.log_level
+    config.validate()
+    return config
+
+
+def _build_notifier(config: Config, store: Store) -> Notifier:
+    notifiers: List[Notifier] = [ConsoleNotifier()]
+    if config.telegram.enabled:
+        from .notify.telegram import TelegramNotifier
+        notifiers.append(TelegramNotifier(config.telegram, store))
+    return MultiNotifier(notifiers)
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        config = _load_config(args)
+    except TmbotError as exc:
+        print(f"configuration error: {exc}", file=sys.stderr)
+        return 2
+
+    _configure_logging(config.log_level)
+    log = logging.getLogger("tmbot")
+    if config.broker.environment == "live" and not config.dry_run:
+        log.warning("connected to the LIVE account -- real orders will be modified")
+
+    store = Store(config.database)
+    broker = CapitalComBroker(config.broker)
+    notifier = _build_notifier(config, store)
+
+    try:
+        if args.command == "run":
+            supervisor = Supervisor(broker, store, config, notifier)
+
+            def handle_signal(signum, _frame):
+                log.info("signal %s received; shutting down", signum)
+                supervisor.stop()
+
+            signal.signal(signal.SIGINT, handle_signal)
+            signal.signal(signal.SIGTERM, handle_signal)
+            supervisor.run()
+            return 0
+
+        broker.connect()
+
+        if args.command == "probe":
+            print(broker.probe_partial_close().render())
+            return 0
+
+        if args.command == "account":
+            account = broker.account_summary()
+            print(f"account {account.get('accountId')} ({account.get('accountName', '')})")
+            print(f"currency {account.get('currency')}  balance {account.get('balance')}")
+            print(f"hedging mode: {broker.hedging_mode()}")
+            return 0
+
+        if args.command == "positions":
+            positions = broker.positions()
+            if not positions:
+                print("no open positions")
+            for position in positions:
+                print(
+                    f"{position.deal_id}  {position.epic:12s} {position.direction.value:4s} "
+                    f"{position.size:<8} @ {position.entry_price}  "
+                    f"SL {position.stop_level}  TP {position.profit_level}"
+                )
+            return 0
+
+        if args.command == "status":
+            supervisor = Supervisor(broker, store, config, notifier)
+            print(supervisor.status_text())
+            return 0
+
+        if args.command == "report":
+            reporter = ReportBuilder(broker, config)
+            epics = [args.epic.upper()] if args.epic else [
+                item.epic for item in config.analysis.watchlist
+            ]
+            if not epics:
+                print("no epic given and the watchlist is empty", file=sys.stderr)
+                return 2
+            failures = 0
+            for epic in epics:
+                try:
+                    plan = reporter.build(epic)
+                except Exception as exc:
+                    print(f"{epic}: {exc}", file=sys.stderr)
+                    failures += 1
+                    continue
+                store.save_plan(plan)
+                print(render_markdown(plan) if args.markdown else render_text(plan))
+                print()
+            return 1 if failures else 0
+
+        return 2
+    except TmbotError as exc:
+        log.error("%s", exc)
+        return 1
+    finally:
+        broker.close()
+        store.close()
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

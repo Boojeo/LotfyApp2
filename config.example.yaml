@@ -1,0 +1,90 @@
+# Behaviour lives here; secrets live in .env. This file is safe to commit.
+
+database: tmbot.sqlite3
+log_level: INFO
+
+broker:
+  # environment is set from the command line (--env demo|live) and has no
+  # default on purpose.
+  timeout: 20.0
+  retry_attempts: 5
+  circuit_threshold: 5
+  circuit_cooldown: 90.0
+  # probe | netting_offset | delete_with_size
+  partial_close_strategy: probe
+
+management:
+  poll_seconds: 10.0
+  management_timeframe: M15
+
+  # Fractions are of the ORIGINAL position size: 50% at TP1, 25% at TP2, the
+  # remaining 25% rides to TP3. Sizes are rounded down to the instrument's
+  # increment, so the runner is never over-closed.
+  ladder:
+    - {stage: TP1, fraction: 0.50}
+    - {stage: TP2, fraction: 0.25}
+
+  # Stop goes to the exact entry price the moment TP1 trades.
+  breakeven_stage: TP1
+  breakeven_offset_r: 0.0
+
+  # ATR chandelier with a market-structure floor, active once TP1 is banked.
+  trail_after_stage: TP1          # TP1 | TP2 | ENTRY | NEVER
+  trail_atr_period: 14
+  trail_k_strong: 2.5             # ADX >= adx_strong
+  trail_k_moderate: 3.0           # ADX >= adx_moderate
+  trail_when_weak: false          # a weak trend holds the stop where it is
+  structure_buffer_atr: 0.25
+  adx_strong: 25.0
+  adx_moderate: 18.0
+  min_stop_improvement_atr: 0.10  # ignore sub-tick nudges
+
+  # In a strong trend, push TP3 out rather than exiting into momentum.
+  extend_tp3: true
+  tp3_extension_atr: 1.0
+  tp3_extension_trigger_atr: 0.5
+  tp3_max_extensions: 3
+
+  on_indivisible_size: hold       # hold | close_all
+  max_quote_age_seconds: 90.0
+  adoption_confirm_timeout_minutes: 30.0
+  auto_decline_on_timeout: true
+
+analysis:
+  watchlist:
+    - epic: GOLD
+      display: Gold
+      news_query: gold XAUUSD bullion
+    - epic: US100
+      display: US Tech 100
+      news_query: Nasdaq 100 tech stocks
+    - epic: EURUSD
+      display: EUR/USD
+      news_query: euro dollar ECB Fed
+  structure_timeframe: H4
+  entry_timeframe: H1
+  atr_period: 14
+  zone_tolerance_atr: 0.5
+  min_target_separation_atr: 0.75
+  max_stop_atr: 2.5
+  min_reward_risk: 0.8
+  news_lookback_hours: 24
+
+news:
+  provider: none                  # marketaux | finnhub | none
+
+llm:
+  enabled: true
+  model: claude-opus-5
+
+telegram:
+  enabled: false                  # auto-enables when the token and chat id are set
+  poll_seconds: 3.0
+
+report:
+  daily_time: "07:00"
+  timezone: UTC
+  intraday_refresh_hours: 4.0
+  notify_on_bias_flip: true
+  notify_on_level_invalidated: true
+  output_dir: reports

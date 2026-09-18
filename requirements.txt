@@ -1,0 +1,7 @@
+# Core runtime
+requests>=2.31
+PyYAML>=6.0
+
+# Optional: the fundamental/news synthesis. Without it the bot falls back to a
+# deterministic keyword read and still produces a full daily report.
+anthropic>=1.0
