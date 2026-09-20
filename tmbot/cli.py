@@ -157,6 +157,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                     print(f"  {'':<16}   news: {item.news_query}")
             if not watchlist:
                 print("  (empty -- reports and plans have nothing to work on)")
+            analysis = config.analysis
+            print(f"analysis      structure on {analysis.structure_timeframe}, "
+                  f"levels and bias on {analysis.entry_timeframe}, "
+                  f"ATR({analysis.atr_period})")
+            print(f"              stop between {analysis.min_stop_atr} and "
+                  f"{analysis.max_stop_atr} ATR, TP1 at least "
+                  f"{analysis.min_reward_risk}R")
+            print(f"management    decisions on "
+                  f"{management.management_timeframe} every "
+                  f"{management.poll_seconds:.0f}s")
             print()
             print(f"daily report  {config.report.daily_time} {config.report.timezone}, "
                   f"refreshed every {config.report.intraday_refresh_hours:.0f}h")
