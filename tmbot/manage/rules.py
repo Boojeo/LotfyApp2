@@ -161,9 +161,37 @@ def evaluate(
     minimum_size = rules.min_deal_size if rules else 0.0
     remaining = trade.remaining_size
 
+    three_deals = config.exit_model == "three_deals"
+
+    # ---------------------------------------------------------------- leg exit
+    # Three-deal mode: this deal has exactly one target and is closed whole at
+    # it.  The TP3 leg is left to the shared final-target block below so it can
+    # still be extended in a strong trend.
+    if three_deals:
+        stage = (trade.leg_target or Stage.TP3)
+        level = _stage_level(trade, stage.value)
+        if (
+            stage is not Stage.TP3
+            and level is not None
+            and remaining > 0
+            and direction.is_beyond(price, level)
+        ):
+            decisions.append(Decision(
+                kind=DecisionKind.CLOSE_ALL,
+                deal_id=trade.deal_id,
+                key=f"{trade.deal_id}:leg_close:{stage.value}",
+                reason=(
+                    f"leg {trade.leg_index + 1} target {stage.value} {level} "
+                    f"reached at {price}"
+                ),
+                size=remaining,
+                stage=stage,
+            ))
+            remaining = 0.0
+
     # ---------------------------------------------------------------- ladder
     done_flags = {"TP1": trade.tp1_done, "TP2": trade.tp2_done}
-    for step in config.ladder:
+    for step in (() if three_deals else config.ladder):
         stage = step.stage.upper()
         level = _stage_level(trade, stage)
         if level is None or done_flags.get(stage):
@@ -235,15 +263,20 @@ def evaluate(
             ))
 
     # ---------------------------------------------------------------- final target
-    beyond_tp3 = direction.is_beyond(price, trade.tp3)
+    # In three-deal mode every other leg has its own exit and must not be
+    # dragged to TP3 or trailed out of its target.
+    runner = trade.is_runner if three_deals else True
+    beyond_tp3 = runner and direction.is_beyond(price, trade.tp3)
     can_extend = (
-        config.extend_tp3
+        runner
+        and config.extend_tp3
         and snapshot.strength is TrendStrength.STRONG
         and trade.tp3_extensions < config.tp3_max_extensions
         and snapshot.atr > 0
     )
     near_tp3 = (
-        snapshot.atr > 0
+        runner
+        and snapshot.atr > 0
         and abs(trade.tp3 - price) <= config.tp3_extension_trigger_atr * snapshot.atr
     )
 
@@ -274,7 +307,7 @@ def evaluate(
         remaining = 0.0
 
     # ---------------------------------------------------------------- trailing stop
-    if remaining > 0 and _stage_reached(trade, config.trail_after_stage, price):
+    if remaining > 0 and runner and _stage_reached(trade, config.trail_after_stage, price):
         multiplier = trail_multiplier(snapshot.strength, config)
         if multiplier is None:
             blocked.append(Blocked(

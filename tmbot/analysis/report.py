@@ -33,7 +33,14 @@ class ReportBuilder:
 
     # ------------------------------------------------------------------ build
 
-    def build(self, epic: str) -> TradePlan:
+    def build(self, epic: str, direction: Optional[Direction] = None) -> TradePlan:
+        """Analyse ``epic``.
+
+        ``direction`` forces which side the levels are built for.  It is used
+        when adopting a position that runs against the bias: the bias is still
+        reported honestly, but targets and stop must belong to the side the
+        user is actually on, or the stop lands on the wrong side of the entry.
+        """
         analysis = self.config.analysis
         epic_config = self.config.epic_config(epic)
 
@@ -64,7 +71,7 @@ class ReportBuilder:
         )
 
         combined = _combine(technical, fundamental)
-        direction = combined.direction or (
+        direction = direction or combined.direction or (
             Direction.BUY if technical.score >= 0 else Direction.SELL
         )
 

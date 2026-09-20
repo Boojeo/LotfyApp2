@@ -107,11 +107,31 @@ class AdoptionTests(unittest.TestCase):
         self.assertIs(store.trade(trade.deal_id).status, TradeStatus.DECLINED)
         self.assertIn("not confirmed within", texts(notifier))
 
+    def test_an_entry_against_the_bias_still_gets_levels_on_the_right_side(self):
+        # The fixture's series reads bearish. Buying into it must not hand the
+        # trade a stop above the entry and targets below it.
+        supervisor, broker, store, _ = build_supervisor()
+        supervisor.start()
+        plan = supervisor._plan_for("GOLD")
+        self.assertIs(plan.direction, Direction.SELL, "fixture precondition")
+
+        broker.seed_position(position(direction=Direction.BUY, entry=3400.0))
+        supervisor.tick()
+        trade = store.pending_trades()[0]
+
+        self.assertLess(trade.sl, trade.entry_price, "a long's stop belongs below the entry")
+        self.assertGreater(trade.tp1, trade.entry_price)
+        self.assertGreater(trade.tp2, trade.tp1)
+        self.assertGreater(trade.tp3, trade.tp2)
+
     def test_the_plan_is_rebased_onto_the_actual_fill(self):
         supervisor, broker, store, _ = build_supervisor()
         supervisor.start()
         plan = supervisor._plan_for("GOLD")
-        broker.seed_position(position(entry=plan.reference_price + 5.0))
+        # Trade the side the plan argues for, so this isolates rebasing.
+        broker.seed_position(
+            position(direction=plan.direction, entry=plan.reference_price + 5.0)
+        )
 
         supervisor.tick()
         trade = store.pending_trades()[0]

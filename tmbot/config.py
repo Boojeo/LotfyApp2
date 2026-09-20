@@ -53,6 +53,16 @@ class ManagementConfig:
     poll_seconds: float = 10.0
     management_timeframe: str = "M15"
     management_lookback: int = 300
+
+    # How the position is taken off:
+    #   partial_close -- you open ONE deal; it is sliced by `ladder`.
+    #   three_deals   -- you open THREE deals; each is closed whole at its own
+    #                    target (leg 1 at TP1, leg 2 at TP2, leg 3 at TP3).
+    #                    Requires hedging mode on the account, otherwise the
+    #                    broker nets the three deals into a single position.
+    exit_model: str = "partial_close"
+    leg_targets: List[str] = field(default_factory=lambda: ["TP1", "TP2", "TP3"])
+    group_window_minutes: float = 15.0
     # 50% of the original at TP1, 25% at TP2, the remaining 25% rides to TP3.
     ladder: List[LadderStep] = field(
         default_factory=lambda: [LadderStep("TP1", 0.50), LadderStep("TP2", 0.25)]
@@ -176,12 +186,24 @@ class Config:
         ]
         if missing:
             raise ConfigError(f"missing broker credentials: {', '.join(missing)}")
-        total = sum(step.fraction for step in self.management.ladder)
-        if total >= 1.0:
+        if self.management.exit_model not in ("partial_close", "three_deals"):
             raise ConfigError(
-                f"management.ladder closes {total:.0%} of the position before TP3; "
-                "leave something for the runner"
+                "management.exit_model must be 'partial_close' or 'three_deals'"
             )
+        if self.management.exit_model == "partial_close":
+            total = sum(step.fraction for step in self.management.ladder)
+            if total >= 1.0:
+                raise ConfigError(
+                    f"management.ladder closes {total:.0%} of the position before TP3; "
+                    "leave something for the runner"
+                )
+        else:
+            targets = self.management.leg_targets
+            if not targets or any(t.upper() not in ("TP1", "TP2", "TP3") for t in targets):
+                raise ConfigError(
+                    "management.leg_targets must list TP1/TP2/TP3 in the order the "
+                    "legs should be closed"
+                )
         if self.telegram.enabled and not (self.telegram.bot_token and self.telegram.chat_id):
             raise ConfigError("telegram.enabled is true but bot_token/chat_id are not set")
         if self.management.on_indivisible_size not in ("hold", "close_all"):

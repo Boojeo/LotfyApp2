@@ -155,6 +155,20 @@ class Store:
         )
         return [ManagedTrade.from_dict(json.loads(row["payload"])) for row in rows]
 
+    def trades_in_group(self, group_id: str) -> List[ManagedTrade]:
+        """Every still-relevant leg of one three-deal basket, leg order first."""
+        if not group_id:
+            return []
+        legs = [
+            trade for trade in self.trades_with_status(
+                TradeStatus.MANAGING,
+                TradeStatus.PENDING_CONFIRMATION,
+                TradeStatus.ERROR,
+            )
+            if trade.group_id == group_id
+        ]
+        return sorted(legs, key=lambda trade: trade.leg_index)
+
     def active_trades(self) -> List[ManagedTrade]:
         return self.trades_with_status(TradeStatus.MANAGING, TradeStatus.ERROR)
 

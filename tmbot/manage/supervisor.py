@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, time as time_of_day, timedelta, timezone
 from typing import Dict, List, Optional
@@ -27,6 +28,7 @@ from ..models import (
     ManagedTrade,
     MarketSnapshot,
     Quote,
+    Stage,
     TradePlan,
     TradeStatus,
     utcnow,
@@ -83,6 +85,15 @@ class Supervisor:
                 + "\nTP1/TP2 partials will be skipped; break-even and trailing still apply.",
                 level="warn",
             )
+        if self.config.management.exit_model == "three_deals" and probe.hedging_mode is False:
+            self.notifier.send(
+                "Exit model is THREE_DEALS but this account has hedging OFF, so "
+                "Capital.com will merge your three deals into one position and the "
+                "legs cannot be closed separately.\nTurn hedging on in the "
+                "Capital.com platform, or switch management.exit_model back to "
+                "partial_close.",
+                level="error",
+            )
         self._reconcile_pending_actions()
         self._register_commands()
         self.notifier.start()
@@ -137,7 +148,7 @@ class Supervisor:
             if position.deal_id in known:
                 continue
             try:
-                plan = self._plan_for(position.epic)
+                plan = self._plan_for(position.epic, direction=position.direction)
             except Exception as exc:
                 log.exception("could not build a plan for %s", position.epic)
                 self.notifier.send(
@@ -148,7 +159,27 @@ class Supervisor:
                 )
                 continue
 
-            trade = ManagedTrade.from_position(position, plan)
+            group_id, leg_index, leg_target = self._assign_leg(position)
+            trade = ManagedTrade.from_position(
+                position, plan,
+                group_id=group_id, leg_index=leg_index, leg_target=leg_target,
+            )
+
+            # A leg arriving after its basket was already confirmed is adopted
+            # on the same decision rather than asking again.
+            siblings = self.store.trades_in_group(group_id)
+            if any(leg.status is TradeStatus.MANAGING for leg in siblings):
+                trade.status = TradeStatus.MANAGING
+                self.store.save_trade(trade)
+                applied = self._apply_initial_protection(trade)
+                self.notifier.send(
+                    f"{trade.epic}: leg {leg_index + 1} joined the confirmed group "
+                    f"({trade.initial_size} @ {trade.entry_price}), exits at "
+                    f"{leg_target.value if leg_target else 'TP3'}.\n"
+                    + "\n".join(applied)
+                )
+                continue
+
             trade.status = TradeStatus.PENDING_CONFIRMATION
             self.store.save_trade(trade)
             self.store.log_event(
@@ -158,11 +189,63 @@ class Supervisor:
             )
             self.notifier.send(self._adoption_message(trade, plan))
 
+    def _assign_leg(self, position: BrokerPosition) -> tuple[str, int, Optional[Stage]]:
+        """Work out which three-deal basket a new position belongs to.
+
+        Deals on the same instrument and side, opened within the grouping
+        window, are treated as one basket: first deal exits at TP1, second at
+        TP2, third rides to TP3.
+        """
+        management = self.config.management
+        if management.exit_model != "three_deals":
+            return "", 0, None
+
+        targets = [stage.upper() for stage in management.leg_targets]
+        window = management.group_window_minutes * 60.0
+        # Deals are grouped by how close together THEY were opened, not by how
+        # old they are -- otherwise starting the bot an hour after you placed
+        # them would scatter the basket into three separate groups.
+        reference = position.created_at or utcnow()
+
+        open_groups: Dict[str, List[ManagedTrade]] = {}
+        for trade in self.store.trades_with_status(
+            TradeStatus.MANAGING, TradeStatus.PENDING_CONFIRMATION
+        ):
+            if not trade.group_id or trade.epic != position.epic:
+                continue
+            if trade.direction is not position.direction:
+                continue
+            opened = trade.opened_at or trade.adopted_at
+            if abs((opened - reference).total_seconds()) > window:
+                continue
+            open_groups.setdefault(trade.group_id, []).append(trade)
+
+        for group_id, legs in sorted(
+            open_groups.items(),
+            key=lambda item: max(leg.adopted_at for leg in item[1]),
+            reverse=True,
+        ):
+            if len(legs) >= len(targets):
+                continue
+            leg_index = max(leg.leg_index for leg in legs) + 1
+            return group_id, leg_index, Stage(targets[min(leg_index, len(targets) - 1)])
+
+        return f"{position.epic}-{position.direction.value}-{uuid.uuid4().hex[:6]}", 0, Stage(
+            targets[0]
+        )
+
     def _adoption_message(self, trade: ManagedTrade, plan: TradePlan) -> str:
         agrees = plan.direction is trade.direction
-        ladder = ", ".join(
-            f"{step.stage} {step.fraction:.0%}" for step in self.config.management.ladder
-        ) or "none"
+        if self.config.management.exit_model == "three_deals":
+            target = trade.leg_target.value if trade.leg_target else "TP3"
+            legs = len(self.config.management.leg_targets)
+            ladder = (
+                f"leg {trade.leg_index + 1} of {legs} -- this deal closes in full at {target}"
+            )
+        else:
+            ladder = ", ".join(
+                f"{step.stage} {step.fraction:.0%}" for step in self.config.management.ladder
+            ) or "none"
         return (
             f"New position detected: {trade.epic} {trade.direction.value} "
             f"{trade.initial_size} @ {trade.entry_price}\n"
@@ -175,12 +258,29 @@ class Supervisor:
             f"/confirm {trade.short_id} to manage it, /decline {trade.short_id} to leave it alone."
         )
 
-    def _plan_for(self, epic: str, *, force: bool = False) -> TradePlan:
+    def _plan_for(
+        self,
+        epic: str,
+        *,
+        force: bool = False,
+        direction: Optional[Direction] = None,
+    ) -> TradePlan:
+        """Fetch today's plan, rebuilding it when it does not fit the trade.
+
+        A stored plan whose direction opposes the position being adopted is
+        useless for managing it -- its stop sits on the wrong side of the entry
+        -- so the levels are recomputed for the side actually being traded.
+        """
         if not force:
             existing = self.store.latest_plan(epic, max_age_hours=24)
-            if existing:
+            if existing and (direction is None or existing.direction is direction):
                 return existing
-        plan = self.reporter.build(epic)
+            if existing:
+                log.info(
+                    "%s: stored plan is %s but the position is %s; rebuilding levels",
+                    epic, existing.direction.value, direction.value,
+                )
+        plan = self.reporter.build(epic, direction=direction)
         self.store.save_plan(plan)
         return plan
 
@@ -190,15 +290,32 @@ class Supervisor:
             return f"No trade matching {short_id!r}."
         if trade.status is not TradeStatus.PENDING_CONFIRMATION:
             return f"{trade.epic} ({trade.short_id}) is already {trade.status.value}."
-        trade.status = TradeStatus.MANAGING
-        trade.adopted_at = utcnow()
-        self.store.save_trade(trade)
-        self.store.log_event("adopted", "confirmed by user", deal_id=trade.deal_id, epic=trade.epic)
-        applied = self._apply_initial_protection(trade)
-        return (
-            f"Managing {trade.epic} {trade.direction.value} {trade.remaining_size} "
-            f"@ {trade.entry_price}.\n" + ("\n".join(applied) if applied else "Levels unchanged.")
-        )
+        # One reply adopts every leg of the basket -- asking three times for
+        # three deals opened as one trade is friction, not safety.
+        legs = [
+            leg for leg in (self.store.trades_in_group(trade.group_id) or [trade])
+            if leg.status is TradeStatus.PENDING_CONFIRMATION
+        ] or [trade]
+
+        lines: List[str] = []
+        for leg in legs:
+            leg.status = TradeStatus.MANAGING
+            leg.adopted_at = utcnow()
+            self.store.save_trade(leg)
+            self.store.log_event(
+                "adopted", "confirmed by user", deal_id=leg.deal_id, epic=leg.epic
+            )
+            applied = self._apply_initial_protection(leg)
+            label = (
+                f"leg {leg.leg_index + 1} -> {leg.leg_target.value}"
+                if leg.leg_target else "position"
+            )
+            lines.append(
+                f"Managing {leg.epic} {leg.direction.value} {leg.remaining_size} "
+                f"@ {leg.entry_price} ({label})."
+            )
+            lines.extend(f"  {line}" for line in applied)
+        return "\n".join(lines)
 
     def decline(self, short_id: str) -> str:
         trade = self.store.trade_by_short_id(short_id)
@@ -593,12 +710,17 @@ class Supervisor:
                 marker = f"{price} ({trade.r_multiple(price):+.2f}R)"
             except Exception:
                 marker = "price unavailable"
-            rungs = "".join([
-                "1" if trade.tp1_done else "-",
-                "2" if trade.tp2_done else "-",
-                "B" if trade.breakeven_done else "-",
-                "T" if trade.trailing_active else "-",
-            ])
+            if trade.leg_target is not None:
+                rungs = f"leg{trade.leg_index + 1}->{trade.leg_target.value}"
+                rungs += "B" if trade.breakeven_done else ""
+                rungs += "T" if trade.trailing_active else ""
+            else:
+                rungs = "".join([
+                    "1" if trade.tp1_done else "-",
+                    "2" if trade.tp2_done else "-",
+                    "B" if trade.breakeven_done else "-",
+                    "T" if trade.trailing_active else "-",
+                ])
             lines.append(
                 f"{trade.epic} {trade.direction.value} {trade.remaining_size}/"
                 f"{trade.initial_size} @ {trade.entry_price} | now {marker}\n"

@@ -34,6 +34,10 @@ derived from support/resistance and liquidity zones.
 
 **2. Automated trade management (post-entry)**
 
+Two exit models, chosen with `management.exit_model`.
+
+`partial_close` — you open **one** deal and it gets sliced:
+
 | Trigger | Action |
 | --- | --- |
 | TP1 trades | Close 50% of the original size |
@@ -43,6 +47,25 @@ derived from support/resistance and liquidity zones.
 | TP3 trades (no extension left) | Close the runner |
 | Trend strong / moderate | Trail the stop behind price (chandelier + structure floor) |
 | Trend weak | Hold the stop where it is |
+
+`three_deals` — you open **three** deals and each is closed whole at its own target:
+
+| Trigger | Action |
+| --- | --- |
+| TP1 trades | Close deal 1 entirely; move deals 2 and 3 to the **exact entry price** |
+| TP2 trades | Close deal 2 entirely |
+| TP3 trades (no extension left) | Close deal 3 |
+| Trend strong, price near TP3 | Extend TP3 for deal 3 only |
+| Trend strong / moderate | Trail deal 3 only — deals 1 and 2 must not be trailed out of their targets |
+
+Deals on the same instrument and side opened within `group_window_minutes` of
+each other are recognised as one basket, and a single `/confirm` adopts all of
+them. A deal that fills late joins the basket without asking again.
+
+> **`three_deals` needs hedging mode switched on at Capital.com.** With it off
+> the broker nets the three deals into a single position and the legs cannot be
+> closed separately. The bot checks at startup and says so rather than
+> discovering it mid-trade.
 
 ---
 
@@ -126,7 +149,7 @@ plan's stop and final target, then starts managing.
 Rebasing keeps targets where structure put them and preserves the stop's
 *distance*, so a worse fill does not silently widen your risk.
 
-### The ladder
+### The ladder (`partial_close`)
 
 Fractions are of the **original** size, and every size is rounded **down** to the
 instrument's increment so the runner is never over-closed. If a rung cannot be
@@ -134,11 +157,26 @@ executed legally (the slice or the remainder would fall below the minimum deal
 size), the bot says so and holds the full size rather than guessing — but the
 break-even move still happens.
 
+### The basket (`three_deals`)
+
+Each deal carries one target and is closed in full with a plain
+`DELETE /positions/{dealId}` — no size field, no ambiguity. That sidesteps the
+partial-close uncertainty below entirely, which makes this the more robust
+model on this broker if your account can run hedged.
+
 ### Break-even
 
-Keyed off price reaching TP1, **not** off the partial close succeeding. If the
-partial is rejected the trade still gets de-risked. The stop goes to the entry
-price exactly (`breakeven_offset_r: 0.0`).
+Keyed off price reaching TP1, **not** off the close succeeding. If the close is
+rejected the trade still gets de-risked. The stop goes to the entry price
+exactly (`breakeven_offset_r: 0.0`). In `three_deals` mode every leg still open
+moves, so once TP1 trades the whole basket is risk-free.
+
+### Entries against the bias
+
+If you buy while the plan reads bearish, the bot rebuilds the levels for the
+side you are actually on before adopting the position. The bias is still
+reported honestly and the adoption message flags the disagreement — but the
+stop belongs below your entry on a long, whatever the analysis thinks of it.
 
 ### Trailing stop
 
@@ -243,12 +281,12 @@ tmbot/
     fundamental.py     Claude synthesis with a lexicon fallback
     report.py          Report assembly and rendering
   manage/
-    rules.py           Pure decisions: ladder, break-even, trail, extension
+    rules.py           Pure decisions: ladder or leg exit, break-even, trail, extension
     engine.py          Execution with idempotency and verification
     supervisor.py      Poll loop, adoption, schedules, commands
   notify/              Console, Telegram (with command polling), fan-out
   cli.py
-tests/                 83 tests, no network
+tests/                 99 tests, no network
 ```
 
 The split that matters: `manage/rules.py` is pure. It takes a trade and a market

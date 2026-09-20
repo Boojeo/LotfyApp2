@@ -405,6 +405,11 @@ class ManagedTrade:
     sl: float
     plan_id: str = ""
     status: TradeStatus = TradeStatus.PENDING_CONFIRMATION
+    # Three-deal mode: which basket this deal belongs to, its position in that
+    # basket, and the single target that closes it outright.
+    group_id: str = ""
+    leg_index: int = 0
+    leg_target: Optional[Stage] = None
     tp1_done: bool = False
     tp2_done: bool = False
     breakeven_done: bool = False
@@ -455,6 +460,9 @@ class ManagedTrade:
             "sl": self.sl,
             "plan_id": self.plan_id,
             "status": self.status.value,
+            "group_id": self.group_id,
+            "leg_index": self.leg_index,
+            "leg_target": self.leg_target.value if self.leg_target else None,
             "tp1_done": self.tp1_done,
             "tp2_done": self.tp2_done,
             "breakeven_done": self.breakeven_done,
@@ -484,6 +492,9 @@ class ManagedTrade:
             sl=float(raw["sl"]),
             plan_id=raw.get("plan_id", ""),
             status=TradeStatus(raw.get("status", TradeStatus.MANAGING.value)),
+            group_id=raw.get("group_id", ""),
+            leg_index=int(raw.get("leg_index", 0)),
+            leg_target=Stage(raw["leg_target"]) if raw.get("leg_target") else None,
             tp1_done=bool(raw.get("tp1_done")),
             tp2_done=bool(raw.get("tp2_done")),
             breakeven_done=bool(raw.get("breakeven_done")),
@@ -498,8 +509,21 @@ class ManagedTrade:
             note=raw.get("note", ""),
         )
 
+    @property
+    def is_runner(self) -> bool:
+        """True when this deal is the one left to chase the final target."""
+        return self.leg_target is None or self.leg_target is Stage.TP3
+
     @classmethod
-    def from_position(cls, position: BrokerPosition, plan: TradePlan) -> "ManagedTrade":
+    def from_position(
+        cls,
+        position: BrokerPosition,
+        plan: TradePlan,
+        *,
+        group_id: str = "",
+        leg_index: int = 0,
+        leg_target: Optional[Stage] = None,
+    ) -> "ManagedTrade":
         rebased = plan.rebase(position.entry_price)
         return cls(
             deal_id=position.deal_id,
@@ -513,6 +537,9 @@ class ManagedTrade:
             tp3=rebased.tp3,
             sl=rebased.sl,
             plan_id=plan.plan_id,
+            group_id=group_id,
+            leg_index=leg_index,
+            leg_target=leg_target,
             stop_level=position.stop_level,
             best_price=position.entry_price,
             opened_at=position.created_at,
