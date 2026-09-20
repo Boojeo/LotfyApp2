@@ -224,6 +224,20 @@ class CapitalComBroker(BrokerAdapter):
         value = data.get("hedgingMode")
         return bool(value) if value is not None else None
 
+    def set_hedging_mode(self, enabled: bool) -> Dict[str, Any]:
+        """Turn hedging on or off for the connected account.
+
+        Hedging keeps separate deals on one instrument as separate positions,
+        which the three-deal exit model depends on.  With it off the broker
+        nets them into a single position.
+        """
+        self.ensure_session()
+        return self._request(
+            "PUT", "/api/v1/accounts/preferences",
+            json={"hedgingMode": enabled},
+            description=f"set hedgingMode={enabled}",
+        )
+
     # ------------------------------------------------------------------ market data
 
     def market_rules(self, epic: str, *, max_age: float = 3600.0) -> MarketRules:

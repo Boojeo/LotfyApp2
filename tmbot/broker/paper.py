@@ -170,6 +170,11 @@ class PaperBroker(BrokerAdapter):
     def confirm(self, deal_reference: str) -> Dict[str, Any]:
         return self._confirms.get(deal_reference, {"dealStatus": "UNKNOWN"})
 
+    def set_hedging_mode(self, enabled: bool) -> Dict[str, Any]:
+        self._record("set_hedging_mode", enabled)
+        self.hedging = enabled
+        return {"status": "SUCCESS"}
+
     def search_markets(self, term: str) -> List[Dict[str, Any]]:
         return [
             {"epic": epic, "instrumentName": epic, "marketStatus": "TRADEABLE"}

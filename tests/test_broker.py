@@ -233,6 +233,27 @@ class PositionTests(unittest.TestCase):
         self.assertEqual(broker.market_rules("GOLD").min_deal_size, 0.1)
 
 
+class HedgingTests(unittest.TestCase):
+    def test_hedging_mode_can_be_turned_on(self):
+        broker, transport = build({
+            "PUT /api/v1/accounts/preferences": [FakeResponse(200, {"status": "SUCCESS"})],
+        })
+        broker.connect()
+        broker.set_hedging_mode(True)
+        sent = [body for method, url, body in transport.calls if method == "PUT"]
+        self.assertEqual(sent, [{"hedgingMode": True}])
+
+    def test_turning_hedging_off_is_sent_as_false_not_dropped(self):
+        # False is falsy; a naive "skip empty fields" would silently drop it.
+        broker, transport = build({
+            "PUT /api/v1/accounts/preferences": [FakeResponse(200, {"status": "SUCCESS"})],
+        })
+        broker.connect()
+        broker.set_hedging_mode(False)
+        sent = [body for method, url, body in transport.calls if method == "PUT"]
+        self.assertEqual(sent, [{"hedgingMode": False}])
+
+
 class MarketSearchTests(unittest.TestCase):
     def test_searching_returns_the_epics_a_user_can_trade(self):
         broker, _ = build({

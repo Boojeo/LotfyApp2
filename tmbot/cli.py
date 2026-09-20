@@ -50,6 +50,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     markets.add_argument("term", help="part of the instrument name, e.g. gold")
 
+    hedging = sub.add_parser(
+        "hedging",
+        help="show or change hedging mode (the three-deal exit model needs it on)",
+    )
+    hedging.add_argument(
+        "state", nargs="?", choices=("on", "off"),
+        help="omit to just show the current setting",
+    )
+
     sub.add_parser("status", help="show managed positions and ladder state")
     sub.add_parser("positions", help="list raw open positions at the broker")
     sub.add_parser("probe", help="run the partial-close capability probe and exit")
@@ -125,6 +134,32 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"account {account.get('accountId')} ({account.get('accountName', '')})")
             print(f"currency {account.get('currency')}  balance {account.get('balance')}")
             print(f"hedging mode: {broker.hedging_mode()}")
+            return 0
+
+        if args.command == "hedging":
+            current = broker.hedging_mode()
+            if args.state is None:
+                print(f"hedging mode is currently: {current}")
+                print(
+                    "three_deals needs this ON; partial_close works either way."
+                    if current is not True
+                    else "three deals on one instrument will stay separate positions."
+                )
+                return 0
+            wanted = args.state == "on"
+            if current is wanted:
+                print(f"hedging mode is already {args.state}; nothing to do")
+                return 0
+            broker.set_hedging_mode(wanted)
+            confirmed = broker.hedging_mode()
+            print(f"hedging mode: {current} -> {confirmed}")
+            if confirmed is not wanted:
+                print(
+                    "the account did not accept the change -- open positions or "
+                    "orders usually have to be closed first",
+                    file=sys.stderr,
+                )
+                return 1
             return 0
 
         if args.command == "markets":
