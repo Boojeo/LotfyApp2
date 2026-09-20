@@ -76,13 +76,16 @@ analysis:
   watchlist:
     - epic: GOLD
       display: Gold
-      news_query: gold XAUUSD bullion
-    - epic: US100
-      display: US Tech 100
-      news_query: Nasdaq 100 tech stocks
-    - epic: EURUSD
-      display: EUR/USD
-      news_query: euro dollar ECB Fed
+      news_query: gold XAUUSD bullion price
+    - epic: OIL_BRENT
+      display: Brent Oil Spot
+      news_query: Brent crude oil OPEC supply
+    - epic: OIL_CRUDE
+      display: Crude Oil Spot
+      news_query: WTI crude oil inventories OPEC
+    - epic: NATURALGAS
+      display: Natural Gas
+      news_query: natural gas Henry Hub storage weather
   structure_timeframe: H4
   entry_timeframe: H1
   atr_period: 14

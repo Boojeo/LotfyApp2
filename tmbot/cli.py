@@ -61,6 +61,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("status", help="show managed positions and ladder state")
     sub.add_parser("positions", help="list raw open positions at the broker")
+    sub.add_parser(
+        "check",
+        help="read back your settings without connecting to anything -- "
+             "run this after editing config.yaml",
+    )
     sub.add_parser("probe", help="run the partial-close capability probe and exit")
     sub.add_parser("account", help="show the connected account")
     return parser
@@ -121,6 +126,46 @@ def main(argv: Optional[List[str]] = None) -> int:
             signal.signal(signal.SIGINT, handle_signal)
             signal.signal(signal.SIGTERM, handle_signal)
             supervisor.run()
+            return 0
+
+        if args.command == "check":
+            management = config.management
+            print(f"config file   {args.config or '(defaults, no file given)'}")
+            print(f"environment   {config.broker.environment}")
+            print(f"database      {config.database}")
+            print()
+            print(f"exit model    {management.exit_model}")
+            if management.exit_model == "three_deals":
+                order = " then ".join(management.leg_targets)
+                print(f"              you open {len(management.leg_targets)} deals; "
+                      f"they are closed whole at {order}")
+                print(f"              deals opened within "
+                      f"{management.group_window_minutes:.0f} minutes count as one basket")
+            else:
+                slices = ", ".join(
+                    f"{step.fraction:.0%} at {step.stage}" for step in management.ladder
+                )
+                print(f"              you open 1 deal; it is cut {slices}, rest at TP3")
+            print(f"              stop to entry at {management.breakeven_stage}, "
+                  f"trailing after {management.trail_after_stage}")
+            print()
+            watchlist = config.analysis.watchlist
+            print(f"watchlist     {len(watchlist)} instrument(s)")
+            for item in watchlist:
+                print(f"  {item.epic:<16} {item.display or item.epic}")
+                if item.news_query:
+                    print(f"  {'':<16}   news: {item.news_query}")
+            if not watchlist:
+                print("  (empty -- reports and plans have nothing to work on)")
+            print()
+            print(f"daily report  {config.report.daily_time} {config.report.timezone}, "
+                  f"refreshed every {config.report.intraday_refresh_hours:.0f}h")
+            print(f"telegram      {'on' if config.telegram.enabled else 'off'}")
+            print(f"news          {config.news.provider}")
+            print(f"claude        {'on' if config.llm.enabled else 'off'} "
+                  f"({config.llm.model})")
+            print()
+            print("Settings read cleanly. Nothing was sent to the broker.")
             return 0
 
         broker.connect()

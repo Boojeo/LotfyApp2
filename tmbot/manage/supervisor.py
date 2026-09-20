@@ -424,6 +424,13 @@ class Supervisor:
                 log.warning("%s: no usable market data (%s); skipping this cycle", trade.epic, exc)
                 continue
 
+            if snapshot.rules is not None and not snapshot.rules.tradeable:
+                # Closed market: the quote is a stale last price and any modify
+                # would be rejected, which would wrongly flag the trade as ERROR.
+                log.debug("%s is closed; holding %s as it is", trade.epic, trade.short_id)
+                self.store.save_trade(trade)
+                continue
+
             price = snapshot.quote.exit_price(trade.direction)
             self._absorb_extremes(trade, snapshot)
             trade.update_best_price(price)

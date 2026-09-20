@@ -211,6 +211,18 @@ class LifecycleTests(unittest.TestCase):
         self.assertIn(self.trade.short_id, status)
         self.assertIn("[1-B", status)   # TP1 done, break-even done
 
+    def test_a_closed_market_is_left_alone(self):
+        from tmbot.models import MarketRules
+        self.broker.set_rules(MarketRules(
+            epic="GOLD", min_deal_size=0.1, size_step=0.1,
+            decimal_places=2, min_stop_distance=0.5, tradeable=False,
+        ))
+
+        trade = self.move(3410.5)   # well past TP1
+
+        self.assertFalse(trade.tp1_done, "nothing should be sent while the market is shut")
+        self.assertEqual(self.broker.position(trade.deal_id).size, 2.0)
+
     def test_a_manual_close_command_exits_the_position(self):
         self.supervisor.close_command(self.trade.short_id)
         self.assertIsNone(self.broker.position(self.trade.deal_id))

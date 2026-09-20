@@ -93,8 +93,15 @@ live need separate keys).
 accident.
 
 ```bash
+# Read your settings back without connecting to anything
+python -m tmbot --env demo --config config.yaml check
+
 # Check the connection and see how partial closes will be executed
 python -m tmbot --env demo --config config.yaml probe
+
+# Find the epic code for an instrument, and check hedging mode
+python -m tmbot --env demo --config config.yaml markets gold
+python -m tmbot --env demo --config config.yaml hedging
 python -m tmbot --env demo --config config.yaml account
 
 # Build a report without connecting to anything else
@@ -290,7 +297,7 @@ tmbot/
     supervisor.py      Poll loop, adoption, schedules, commands
   notify/              Console, Telegram (with command polling), fan-out
   cli.py
-tests/                 101 tests, no network
+tests/                 107 tests, no network
 ```
 
 The split that matters: `manage/rules.py` is pure. It takes a trade and a market
@@ -316,6 +323,9 @@ python -m unittest discover -s tests -t .
   accounts, preferences, markets and positions endpoints, and will surface any
   mismatch immediately.
 - The bot manages positions; it does not size them. Risk per trade is yours.
+- A closed market is left alone: the quote is a stale last price and any modify
+  would be rejected, so no decisions are taken until it reopens. Reports still
+  build over a weekend.
 - Trailing and partials need the daemon running. Your broker-side stop and final
   target stay in place if it stops, but the ladder does not advance.
 - `NEUTRAL` plans are marked advisory-only: levels are still published and a
