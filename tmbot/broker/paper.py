@@ -182,7 +182,7 @@ class PaperBroker(BrokerAdapter):
             if term.lower() in epic.lower()
         ]
 
-    def probe_partial_close(self) -> PartialCloseProbe:
+    def probe_partial_close(self, *, needed: bool = True) -> PartialCloseProbe:
         strategy = (
             PartialCloseStrategy.NETTING_OFFSET if not self.hedging
             else PartialCloseStrategy.DELETE_WITH_SIZE
@@ -193,4 +193,5 @@ class PaperBroker(BrokerAdapter):
             hedging_mode=self.hedging,
             delete_accepts_size=True,
             notes=["paper broker: partial closes are exact"],
+            needed=needed,
         )

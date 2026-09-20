@@ -76,9 +76,10 @@ class Supervisor:
 
     def start(self) -> None:
         self.broker.connect()
-        probe = self.broker.probe_partial_close()
+        partials_needed = self.config.management.exit_model == "partial_close"
+        probe = self.broker.probe_partial_close(needed=partials_needed)
         log.info("\n%s", probe.render())
-        if probe.strategy is PartialCloseStrategy.UNSUPPORTED and self.config.management.ladder:
+        if probe.blocking and self.config.management.ladder:
             self.notifier.send(
                 "Partial closes are NOT available on this account:\n"
                 + probe.render()
@@ -103,7 +104,8 @@ class Supervisor:
             + (", DRY RUN" if self.config.dry_run else "")
             + f") on account {account.get('accountId', '?')}.\n"
             f"Watching: {', '.join(item.epic for item in self.config.analysis.watchlist) or '-'}\n"
-            f"Partial close: {probe.strategy.value}"
+            f"Exit model: {self.config.management.exit_model}"
+            + (f"  (partial close: {probe.strategy.value})" if partials_needed else "")
         )
 
     def stop(self) -> None:

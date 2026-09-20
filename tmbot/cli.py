@@ -126,8 +126,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         broker.connect()
 
         if args.command == "probe":
-            print(broker.probe_partial_close().render())
-            return 0
+            needed = config.management.exit_model == "partial_close"
+            probe = broker.probe_partial_close(needed=needed)
+            print(probe.render())
+            if not needed:
+                print(
+                    f"\nexit_model is {config.management.exit_model}: you open three "
+                    "deals and each is closed in full, so nothing above blocks you."
+                )
+                print(
+                    "hedging mode is ON -- your three deals will stay separate."
+                    if probe.hedging_mode
+                    else "WARNING: hedging mode is OFF -- your three deals will be "
+                         "merged into one. Run: tmbot hedging on"
+                )
+            return 1 if probe.blocking else 0
 
         if args.command == "account":
             account = broker.account_summary()

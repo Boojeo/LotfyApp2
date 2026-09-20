@@ -36,12 +36,24 @@ class PartialCloseProbe:
     hedging_mode: Optional[bool]
     delete_accepts_size: Optional[bool]
     notes: List[str]
+    needed: bool = True
+
+    @property
+    def blocking(self) -> bool:
+        """True only when partial closes are both unavailable and required."""
+        return self.needed and self.strategy is PartialCloseStrategy.UNSUPPORTED
 
     def render(self) -> str:
         lines = ["[startup] capability probe: partial_close"]
         lines.extend(f"  -> {note}" for note in self.notes)
-        verdict = "ok" if self.strategy is not PartialCloseStrategy.UNSUPPORTED else "FAIL"
-        lines.append(f"  [{verdict}] partial close strategy = {self.strategy.value}")
+        if not self.needed:
+            lines.append(
+                "  [ok] partial closes are not used by this exit model -- "
+                "each deal is closed whole"
+            )
+        else:
+            verdict = "FAIL" if self.blocking else "ok"
+            lines.append(f"  [{verdict}] partial close strategy = {self.strategy.value}")
         return "\n".join(lines)
 
 
@@ -116,7 +128,12 @@ class BrokerAdapter(ABC):
         """Resolve a deal reference into its acceptance/rejection record."""
 
     @abstractmethod
-    def probe_partial_close(self) -> PartialCloseProbe:
+    def probe_partial_close(self, *, needed: bool = True) -> PartialCloseProbe:
+        """Work out how a fraction of a position can be closed.
+
+        ``needed`` is False when the configured exit model closes whole deals,
+        in which case the result is informational only.
+        """
         ...
 
     def search_markets(self, term: str) -> List[Dict[str, Any]]:

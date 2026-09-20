@@ -297,6 +297,36 @@ class ProbeTests(unittest.TestCase):
         self.assertIs(probe.strategy, PartialCloseStrategy.UNSUPPORTED)
         self.assertIn("no safe partial-close path", probe.render())
 
+    def test_a_rejected_deal_id_is_inconclusive_not_a_rejected_body(self):
+        # The API validates the sentinel id before reading the body, so this
+        # tells us nothing about whether `size` is honoured.
+        probe = self._probe(True, "error.invalid.dealId")
+        self.assertIsNone(probe.delete_accepts_size)
+        self.assertIn("the size field is untested", probe.render())
+        self.assertIn("pin broker.partial_close_strategy", probe.render())
+
+    def test_an_unavailable_partial_path_is_not_a_failure_when_unused(self):
+        # three_deals closes whole deals, so the probe is informational.
+        preferences = FakeResponse(200, {"hedgingMode": True})
+        broker, _ = build({
+            "GET /api/v1/accounts/preferences": [preferences],
+            "DELETE /api/v1/positions/tmbot-capability-probe": [
+                FakeResponse(400, {"errorCode": "error.invalid.dealId"}),
+            ],
+        }, retry_attempts=1)
+        broker.connect()
+        probe = broker.probe_partial_close(needed=False)
+
+        self.assertFalse(probe.blocking)
+        self.assertIn("not used by this exit model", probe.render())
+        self.assertNotIn("FAIL", probe.render())
+
+    def test_the_remediation_never_tells_a_hedging_user_to_turn_hedging_off(self):
+        # Netting is the wrong advice when the whole point is separate deals.
+        blocking = self._probe(True, "error.invalid.size")
+        self.assertNotIn("hedgingMode=false", blocking.render())
+        self.assertIn("three_deals", blocking.render())
+
 
 class ParsingTests(unittest.TestCase):
     def test_candles_use_the_mid_of_bid_and_ask(self):

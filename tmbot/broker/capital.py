@@ -383,7 +383,7 @@ class CapitalComBroker(BrokerAdapter):
 
     # ------------------------------------------------------------------ capability probe
 
-    def probe_partial_close(self) -> PartialCloseProbe:
+    def probe_partial_close(self, *, needed: bool = True) -> PartialCloseProbe:
         """Decide how partial closes will be executed on this account.
 
         Netting-offset wins whenever it is available.  A ``DELETE`` that quietly
@@ -412,10 +412,24 @@ class CapitalComBroker(BrokerAdapter):
             notes.append("hedging/unknown account: falling back to DELETE with size")
         else:
             strategy = PartialCloseStrategy.UNSUPPORTED
-            notes.append(
-                "no safe partial-close path: enable netting (hedgingMode=false) "
-                "or pin management.ladder to [] to disable partials"
-            )
+            if not needed:
+                notes.append(
+                    "no partial-close path confirmed, which this exit model does not need"
+                )
+            elif delete_accepts_size is None:
+                notes.append(
+                    "probe inconclusive on a hedging account. To use partial closes "
+                    "here, pin broker.partial_close_strategy to delete_with_size -- "
+                    "the first partial is verified against the position afterwards "
+                    "and partials are disabled automatically if the broker ignored "
+                    "the size"
+                )
+            else:
+                notes.append(
+                    "no safe partial-close path: turn hedging off to use offset "
+                    "deals, or set management.exit_model to three_deals so whole "
+                    "deals are closed instead"
+                )
 
         self.partial_close_strategy = strategy
         return PartialCloseProbe(
@@ -423,6 +437,7 @@ class CapitalComBroker(BrokerAdapter):
             hedging_mode=hedging,
             delete_accepts_size=delete_accepts_size,
             notes=notes,
+            needed=needed,
         )
 
     def _probe_delete_size(self, notes: List[str]) -> Optional[bool]:
@@ -439,6 +454,14 @@ class CapitalComBroker(BrokerAdapter):
             if "not" in code and "found" in code.replace(".", " "):
                 notes.append(f"DELETE {{dealId}} with size ... {exc.code} (body accepted)")
                 return True
+            if "dealid" in code.replace(".", "").replace("_", ""):
+                # The API rejected the sentinel id before it ever looked at the
+                # body, so this says nothing about whether `size` is honoured.
+                notes.append(
+                    f"DELETE {{dealId}} with size ... {exc.code} "
+                    "(rejected on the deal id, so the size field is untested)"
+                )
+                return None
             notes.append(f"DELETE {{dealId}} with size ... {exc.code} (body rejected)")
             return False
         except RetryableError as exc:
