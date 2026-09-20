@@ -28,7 +28,7 @@ management:
   #                  Needs hedging mode ON at Capital.com, or the broker merges
   #                  the three into one position and the legs cannot be closed
   #                  separately. The bot warns you at startup if that is the case.
-  exit_model: partial_close
+  exit_model: three_deals
 
   # three_deals only: which target closes which deal, in the order the deals
   # were opened. Deals on the same instrument and side opened within

@@ -137,7 +137,13 @@ def position(
 
 
 def management(**overrides) -> ManagementConfig:
+    """Management config for the ladder model.
+
+    The shipped default is three_deals, so tests covering the partial-close
+    ladder pin the mode rather than inheriting it.
+    """
     config = ManagementConfig()
+    config.exit_model = "partial_close"
     for key, value in overrides.items():
         setattr(config, key, value)
     return config

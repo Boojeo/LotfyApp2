@@ -60,7 +60,7 @@ class ManagementConfig:
     #                    target (leg 1 at TP1, leg 2 at TP2, leg 3 at TP3).
     #                    Requires hedging mode on the account, otherwise the
     #                    broker nets the three deals into a single position.
-    exit_model: str = "partial_close"
+    exit_model: str = "three_deals"
     leg_targets: List[str] = field(default_factory=lambda: ["TP1", "TP2", "TP3"])
     group_window_minutes: float = 15.0
     # 50% of the original at TP1, 25% at TP2, the remaining 25% rides to TP3.

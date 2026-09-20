@@ -34,7 +34,30 @@ derived from support/resistance and liquidity zones.
 
 **2. Automated trade management (post-entry)**
 
-Two exit models, chosen with `management.exit_model`.
+Two exit models, chosen with `management.exit_model`. **The default is
+`three_deals`.**
+
+`three_deals` (default) — you open **three** deals and each is closed whole at its own target:
+
+| Trigger | Action |
+| --- | --- |
+| TP1 trades | Close deal 1 entirely; move deals 2 and 3 to the **exact entry price** |
+| TP2 trades | Close deal 2 entirely |
+| TP3 trades (no extension left) | Close deal 3 |
+| Trend strong, price near TP3 | Extend TP3 for deal 3 only |
+| Trend strong / moderate | Trail deal 3 only — deals 1 and 2 must not be trailed out of their targets |
+
+Deals on the same instrument and side opened within `group_window_minutes` of
+each other are recognised as one basket, and a single `/confirm` adopts all of
+them. A deal that fills late joins the basket without asking again, and while a
+basket is short of its legs the adoption message says how many are still
+outstanding — a lone deal in this mode closes at TP1 and stops there.
+
+> **`three_deals` needs hedging mode switched on at Capital.com.** With it off
+> the broker nets the three deals into a single position and the legs cannot be
+> closed separately. The bot checks at startup and says so rather than
+> discovering it mid-trade. If your account cannot run hedged, set
+> `exit_model: partial_close` instead.
 
 `partial_close` — you open **one** deal and it gets sliced:
 
@@ -47,25 +70,6 @@ Two exit models, chosen with `management.exit_model`.
 | TP3 trades (no extension left) | Close the runner |
 | Trend strong / moderate | Trail the stop behind price (chandelier + structure floor) |
 | Trend weak | Hold the stop where it is |
-
-`three_deals` — you open **three** deals and each is closed whole at its own target:
-
-| Trigger | Action |
-| --- | --- |
-| TP1 trades | Close deal 1 entirely; move deals 2 and 3 to the **exact entry price** |
-| TP2 trades | Close deal 2 entirely |
-| TP3 trades (no extension left) | Close deal 3 |
-| Trend strong, price near TP3 | Extend TP3 for deal 3 only |
-| Trend strong / moderate | Trail deal 3 only — deals 1 and 2 must not be trailed out of their targets |
-
-Deals on the same instrument and side opened within `group_window_minutes` of
-each other are recognised as one basket, and a single `/confirm` adopts all of
-them. A deal that fills late joins the basket without asking again.
-
-> **`three_deals` needs hedging mode switched on at Capital.com.** With it off
-> the broker nets the three deals into a single position and the legs cannot be
-> closed separately. The bot checks at startup and says so rather than
-> discovering it mid-trade.
 
 ---
 
@@ -286,7 +290,7 @@ tmbot/
     supervisor.py      Poll loop, adoption, schedules, commands
   notify/              Console, Telegram (with command polling), fan-out
   cli.py
-tests/                 99 tests, no network
+tests/                 101 tests, no network
 ```
 
 The split that matters: `manage/rules.py` is pure. It takes a trade and a market

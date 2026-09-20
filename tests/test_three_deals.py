@@ -6,7 +6,7 @@ import unittest
 from datetime import timedelta
 
 from tmbot.broker.paper import PaperBroker
-from tmbot.config import AnalysisConfig, Config, EpicConfig
+from tmbot.config import AnalysisConfig, Config, EpicConfig, ManagementConfig
 from tmbot.manage.rules import DecisionKind, evaluate
 from tmbot.manage.supervisor import Supervisor
 from tmbot.models import Direction, Stage, TradeStatus
@@ -201,6 +201,21 @@ class BasketLifecycleTests(unittest.TestCase):
         self.assertIs(late.status, TradeStatus.MANAGING, "adopted without asking again")
         self.assertEqual(late.leg_target, Stage.TP3)
         self.assertEqual(late.group_id, store.trade("deal-1").group_id)
+
+
+class DefaultsTests(unittest.TestCase):
+    def test_the_project_ships_in_three_deal_mode(self):
+        self.assertEqual(ManagementConfig().exit_model, "three_deals")
+        self.assertEqual(ManagementConfig().leg_targets, ["TP1", "TP2", "TP3"])
+
+    def test_an_incomplete_basket_says_what_is_still_missing(self):
+        supervisor, broker, store, notifier = build_supervisor()
+        supervisor.start()
+        broker.seed_position(position(deal_id="deal-1", size=1.0, entry=3400.0))
+        supervisor.tick()
+        offer = "\n".join(text for _, text in notifier.messages)
+        self.assertIn("WAITING on 2 more deal(s)", offer)
+        self.assertIn("closes at TP1 on its own", offer)
 
 
 class GroupingTests(unittest.TestCase):

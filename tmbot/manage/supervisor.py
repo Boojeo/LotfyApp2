@@ -164,6 +164,17 @@ class Supervisor:
                 position, plan,
                 group_id=group_id, leg_index=leg_index, leg_target=leg_target,
             )
+            # Rebasing onto the fill reintroduces float noise; round to the
+            # instrument's own precision before any of it reaches the broker.
+            try:
+                rules = self.broker.market_rules(trade.epic)
+                trade.tp1 = rules.round_price(trade.tp1)
+                trade.tp2 = rules.round_price(trade.tp2)
+                trade.tp3 = rules.round_price(trade.tp3)
+                trade.sl = rules.round_price(trade.sl)
+            except (RetryableError, AuthError) as exc:
+                log.warning("%s: could not round levels to market precision (%s)",
+                            trade.epic, exc)
 
             # A leg arriving after its basket was already confirmed is adopted
             # on the same decision rather than asking again.
@@ -236,12 +247,20 @@ class Supervisor:
 
     def _adoption_message(self, trade: ManagedTrade, plan: TradePlan) -> str:
         agrees = plan.direction is trade.direction
+        missing = ""
         if self.config.management.exit_model == "three_deals":
             target = trade.leg_target.value if trade.leg_target else "TP3"
             legs = len(self.config.management.leg_targets)
             ladder = (
                 f"leg {trade.leg_index + 1} of {legs} -- this deal closes in full at {target}"
             )
+            outstanding = legs - len(self.store.trades_in_group(trade.group_id))
+            if outstanding > 0:
+                missing = (
+                    f"\nWAITING on {outstanding} more deal(s) to complete the basket. "
+                    f"Open them within {self.config.management.group_window_minutes:.0f} "
+                    f"minutes, or this deal closes at {target} on its own."
+                )
         else:
             ladder = ", ".join(
                 f"{step.stage} {step.fraction:.0%}" for step in self.config.management.ladder
@@ -254,8 +273,10 @@ class Supervisor:
             + f"\nSL {trade.sl}   TP1 {trade.tp1}   TP2 {trade.tp2}   TP3 {trade.tp3}\n"
             f"Ladder: {ladder}; break-even at "
             f"{self.config.management.breakeven_stage}; "
-            f"trail after {self.config.management.trail_after_stage}\n\n"
-            f"/confirm {trade.short_id} to manage it, /decline {trade.short_id} to leave it alone."
+            f"trail after {self.config.management.trail_after_stage}"
+            + missing
+            + f"\n\n/confirm {trade.short_id} to manage it, "
+              f"/decline {trade.short_id} to leave it alone."
         )
 
     def _plan_for(
