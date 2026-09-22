@@ -587,12 +587,31 @@ class Supervisor:
         """
         if trade.remaining_size <= 0 or self.store.has_fill(trade.deal_id, "BROKER"):
             return
+
+        # The quote cache is empty after a restart, which is exactly when this
+        # runs: the machine died, the position hit its stop while the bot was
+        # off, and the first cycle back finds it gone. Returning here would
+        # drop the trade from the journal entirely and quietly flatter the
+        # results, so fall back rather than give up.
+        price = None
         quote = self._quotes.get(trade.epic)
-        if quote is None:
-            return
+        if quote is not None:
+            price = quote.exit_price(trade.direction)
+        else:
+            try:
+                price = self.broker.quote(trade.epic).exit_price(trade.direction)
+            except Exception as exc:
+                log.warning("%s: no quote to price the exit (%s)", trade.epic, exc)
+        if price is None:
+            # Unattended closes are usually stop-outs; the stop is the better
+            # estimate than nothing at all.
+            price = trade.stop_level if trade.stop_level is not None else trade.entry_price
+            log.warning("%s: pricing the exit from the stop level %s",
+                        trade.epic, price)
+
         fill = Fill(
             deal_id=trade.deal_id, epic=trade.epic, ts=utcnow(), stage="BROKER",
-            size=trade.remaining_size, price=quote.exit_price(trade.direction),
+            size=trade.remaining_size, price=price,
             entry_price=trade.entry_price, direction=trade.direction,
             initial_risk=trade.initial_risk,
             fraction=min(1.0, trade.remaining_size / trade.initial_size)

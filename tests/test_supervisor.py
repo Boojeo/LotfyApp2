@@ -224,6 +224,28 @@ class LifecycleTests(unittest.TestCase):
         self.assertFalse(trade.tp1_done, "nothing should be sent while the market is shut")
         self.assertEqual(self.broker.position(trade.deal_id).size, 2.0)
 
+    def test_a_trade_closed_while_the_bot_was_off_is_still_journalled(self):
+        # The machine dies, the stop is hit, the bot restarts to find the
+        # position gone. Dropping it would quietly flatter the journal.
+        self.supervisor._quotes.clear()          # as after a fresh start
+        self.broker._positions.clear()
+        self.supervisor.tick()
+
+        fills = self.store.fills_for(self.trade.deal_id)
+        self.assertEqual(len(fills), 1)
+        self.assertEqual(fills[0].stage, "BROKER")
+        self.assertTrue(fills[0].inferred, "an unobserved exit must be flagged")
+
+    def test_it_is_priced_from_the_stop_when_no_quote_can_be_had(self):
+        from tmbot.errors import RetryableError
+        self.supervisor._quotes.clear()
+        self.broker._positions.clear()
+        self.broker._quotes.clear()              # broker unreachable too
+        self.supervisor.tick()
+
+        fills = self.store.fills_for(self.trade.deal_id)
+        self.assertEqual(len(fills), 1, "the trade is recorded either way")
+
     def test_a_manual_close_command_exits_the_position(self):
         self.supervisor.close_command(self.trade.short_id)
         self.assertIsNone(self.broker.position(self.trade.deal_id))
