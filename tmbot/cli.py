@@ -63,6 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="omit to just show the current setting",
     )
 
+    journal = sub.add_parser(
+        "journal", help="win rate and R per instrument from recorded fills"
+    )
+    journal.add_argument("days", nargs="?", type=int, default=30,
+                         help="how far back to look (default 30)")
+
     sub.add_parser("status", help="show managed positions and ladder state")
     sub.add_parser("positions", help="list raw open positions at the broker")
     sub.add_parser(
@@ -132,6 +138,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             signal.signal(signal.SIGINT, handle_signal)
             signal.signal(signal.SIGTERM, handle_signal)
             supervisor.run()
+            return 0
+
+        if args.command == "journal":
+            from .analysis import journal as journal_module
+            from .i18n import Translator
+            print(journal_module.render(
+                journal_module.build(store, max(1, args.days)),
+                Translator(config.language),
+            ))
             return 0
 
         if args.command == "check":

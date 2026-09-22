@@ -19,12 +19,14 @@ from typing import Dict, List, Optional
 from ..analysis.bias import trend_strength
 from ..analysis.indicators import adx, atr, ema, last_two, last_value, macd, swing_points
 from ..analysis import chart as chart_module
+from ..analysis import journal as journal_module
 from ..analysis.report import ReportBuilder, render_markdown, render_text
 from ..broker.base import BrokerAdapter, PartialCloseStrategy
 from ..config import Config
 from ..errors import AuthError, RetryableError, StaleDataError
 from ..i18n import LANGUAGES, Translator
 from ..models import (
+    Fill,
     Bias,
     BrokerPosition,
     Candle,
@@ -523,6 +525,16 @@ class Supervisor:
                              deal_id=trade.deal_id, epic=trade.epic)
         self.notifier.send("\n".join(lines), level="warn")
 
+    def journal_command(self, argument: str) -> str:
+        """How the system has actually performed, in R."""
+        try:
+            days = int(argument.strip()) if argument.strip() else 30
+        except ValueError:
+            days = 30
+        return journal_module.render(
+            journal_module.build(self.store, max(1, days)), self.t
+        )
+
     def hold_command(self, argument: str) -> str:
         """Mute reversal alerts for one trade, or turn them back on."""
         trade = self.store.trade_by_short_id(argument.strip())
@@ -546,6 +558,7 @@ class Supervisor:
             trade.update_best_price(candle.high if trade.direction.sign > 0 else candle.low)
 
     def _finalise(self, trade: ManagedTrade, *, notify: bool = True) -> None:
+        self._record_broker_exit(trade)
         trade.status = TradeStatus.CLOSED
         trade.closed_at = trade.closed_at or utcnow()
         trade.remaining_size = 0.0
@@ -562,6 +575,31 @@ class Supervisor:
                 self.t("action.closed_at_broker", epic=trade.epic,
                        id=trade.short_id, stage=stage)
             )
+
+    def _record_broker_exit(self, trade: ManagedTrade) -> None:
+        """Record a position the broker closed on us -- a stop-out or a target.
+
+        We never saw the fill, so the exit price is estimated from the last
+        quote and the fill is flagged ``inferred``. The journal counts it and
+        says how many of its numbers rest on an estimate rather than pretending
+        the figure is exact.
+        """
+        if trade.remaining_size <= 0 or self.store.has_fill(trade.deal_id, "BROKER"):
+            return
+        quote = self._quotes.get(trade.epic)
+        if quote is None:
+            return
+        fill = Fill(
+            deal_id=trade.deal_id, epic=trade.epic, ts=utcnow(), stage="BROKER",
+            size=trade.remaining_size, price=quote.exit_price(trade.direction),
+            entry_price=trade.entry_price, direction=trade.direction,
+            initial_risk=trade.initial_risk,
+            fraction=min(1.0, trade.remaining_size / trade.initial_size)
+            if trade.initial_size else 0.0,
+            inferred=True,
+        )
+        self.store.record_fill(fill)
+        trade.realised = round(trade.realised + fill.r_multiple, 6)
 
     # ------------------------------------------------------------------ snapshots
 
@@ -831,6 +869,7 @@ class Supervisor:
         self.notifier.register("plan", self.plan_command)
         self.notifier.register("close", self.close_command)
         self.notifier.register("be", self.breakeven_command)
+        self.notifier.register("journal", self.journal_command)
         self.notifier.register("hold", self.hold_command)
         self.notifier.register("lang", self.set_language)
         self.notifier.register("pause", lambda _: self.set_paused(True))

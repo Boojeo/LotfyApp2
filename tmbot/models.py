@@ -385,6 +385,58 @@ class TradePlan:
 
 
 @dataclass
+class Fill:
+    """One closed portion of a trade.
+
+    ``r_multiple`` is the honest measure of whether the system works: it is
+    scale-free, so a 0.1 lot and a 10 lot on the same idea score the same.
+    Broker fees, overnight charges and slippage are NOT included -- this is the
+    quality of the decisions, not your account statement.
+    """
+
+    deal_id: str
+    epic: str
+    ts: datetime
+    stage: str            # TP1 / TP2 / TP3 / STOP / MANUAL / BROKER
+    size: float
+    price: float
+    entry_price: float
+    direction: Direction
+    initial_risk: float
+    fraction: float       # share of the original position this fill closed
+    inferred: bool = False  # exit price estimated, not observed
+
+    @property
+    def r_multiple(self) -> float:
+        """R earned by this fill, weighted by how much of the trade it closed."""
+        if not self.initial_risk:
+            return 0.0
+        move = (self.price - self.entry_price) * self.direction.sign
+        return move / self.initial_risk * self.fraction
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "deal_id": self.deal_id, "epic": self.epic, "ts": _iso(self.ts),
+            "stage": self.stage, "size": self.size, "price": self.price,
+            "entry_price": self.entry_price, "direction": self.direction.value,
+            "initial_risk": self.initial_risk, "fraction": self.fraction,
+            "inferred": self.inferred,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: Dict[str, Any]) -> "Fill":
+        return cls(
+            deal_id=raw["deal_id"], epic=raw["epic"], ts=_parse_dt(raw["ts"]),
+            stage=raw["stage"], size=float(raw["size"]), price=float(raw["price"]),
+            entry_price=float(raw["entry_price"]),
+            direction=Direction(raw["direction"]),
+            initial_risk=float(raw["initial_risk"]),
+            fraction=float(raw["fraction"]),
+            inferred=bool(raw.get("inferred")),
+        )
+
+
+@dataclass
 class ManagedTrade:
     """Live management state for one adopted position.
 
@@ -404,6 +456,10 @@ class ManagedTrade:
     tp3: float
     sl: float
     plan_id: str = ""
+    # Risk measured once, at adoption. `sl` moves as the stop is managed, so
+    # deriving risk from it makes every R figure collapse to zero the moment
+    # break-even lands -- and R is the only measure of whether this works.
+    risk_at_entry: float = 0.0
     status: TradeStatus = TradeStatus.PENDING_CONFIRMATION
     # Three-deal mode: which basket this deal belongs to, its position in that
     # basket, and the single target that closes it outright.
@@ -435,7 +491,13 @@ class ManagedTrade:
 
     @property
     def initial_risk(self) -> float:
-        return abs(self.entry_price - self.sl)
+        # Falls back to the live distance only for records written before this
+        # was stored, and for a trade that has not been adopted yet.
+        return self.risk_at_entry or abs(self.entry_price - self.sl)
+
+    def __post_init__(self) -> None:
+        if not self.risk_at_entry:
+            self.risk_at_entry = abs(self.entry_price - self.sl)
 
     def update_best_price(self, price: float) -> None:
         if self.best_price is None:
@@ -464,6 +526,7 @@ class ManagedTrade:
             "tp3": self.tp3,
             "sl": self.sl,
             "plan_id": self.plan_id,
+            "risk_at_entry": self.risk_at_entry,
             "status": self.status.value,
             "group_id": self.group_id,
             "leg_index": self.leg_index,
@@ -499,6 +562,7 @@ class ManagedTrade:
             tp3=float(raw["tp3"]),
             sl=float(raw["sl"]),
             plan_id=raw.get("plan_id", ""),
+            risk_at_entry=float(raw.get("risk_at_entry", 0.0)),
             status=TradeStatus(raw.get("status", TradeStatus.MANAGING.value)),
             group_id=raw.get("group_id", ""),
             leg_index=int(raw.get("leg_index", 0)),
@@ -547,6 +611,7 @@ class ManagedTrade:
             tp2=rebased.tp2,
             tp3=rebased.tp3,
             sl=rebased.sl,
+            risk_at_entry=abs(position.entry_price - rebased.sl),
             plan_id=plan.plan_id,
             group_id=group_id,
             leg_index=leg_index,

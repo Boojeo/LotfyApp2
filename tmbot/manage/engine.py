@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 from ..broker.base import BrokerAdapter, PartialCloseStrategy
 from ..config import Config
 from ..errors import NotSupportedError, PermanentError, RetryableError
-from ..models import BrokerPosition, Direction, ManagedTrade, TradeStatus, utcnow
+from ..models import BrokerPosition, Direction, Fill, ManagedTrade, TradeStatus, utcnow
 from ..i18n import Translator
 from ..notify.base import Notifier
 from ..store import Store
@@ -167,8 +167,43 @@ class TradeEngine:
         self._record_local_state(trade, decision)
         return reference
 
+    @staticmethod
+    def _fill_stage(decision: Decision) -> str:
+        """Label the exit so the journal can group by what caused it."""
+        if decision.stage is not None:
+            return decision.stage.value
+        if ":reversal" in decision.key:
+            return "REVERSAL"
+        if ":manual" in decision.key:
+            return "MANUAL"
+        return "CLOSE"
+
+    def _record_fill(self, trade: ManagedTrade, decision: Decision) -> None:
+        """Log what this exit earned, in R.
+
+        Without this there is no way to answer "is this working?" -- and the
+        answer only exists if it is captured as the trade closes. There is no
+        reconstructing it afterwards.
+        """
+        if decision.size is None or decision.exit_price is None or not trade.initial_size:
+            return
+        stage = self._fill_stage(decision)
+        if self.store.has_fill(trade.deal_id, stage):
+            return  # already recorded; a replay must not double-count
+        fill = Fill(
+            deal_id=trade.deal_id, epic=trade.epic, ts=utcnow(), stage=stage,
+            size=decision.size, price=decision.exit_price,
+            entry_price=trade.entry_price, direction=trade.direction,
+            initial_risk=trade.initial_risk,
+            fraction=min(1.0, decision.size / trade.initial_size),
+        )
+        self.store.record_fill(fill)
+        trade.realised = round(trade.realised + fill.r_multiple, 6)
+
     def _record_local_state(self, trade: ManagedTrade, decision: Decision) -> None:
         """Advance our own flags so the ladder cannot fire the same rung twice."""
+        if decision.kind in (DecisionKind.PARTIAL_CLOSE, DecisionKind.CLOSE_ALL):
+            self._record_fill(trade, decision)
         if decision.kind is DecisionKind.PARTIAL_CLOSE and decision.stage:
             if decision.stage.value == "TP1":
                 trade.tp1_done = True

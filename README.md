@@ -321,6 +321,37 @@ that and re-maps the trade rather than reporting it closed.
 
 ---
 
+## Is it working?
+
+`/journal [days]` (or `tmbot journal 30`) aggregates every recorded exit:
+
+```
+Performance, last 30 days (R = multiples of risk)
+
+GOLD   3 trades   2W 1L   +1.25R   avg +0.42R
+  TP1 2/3 (67%)   TP2 1/3 (33%)   TP3 1/3 (33%)
+
+Total 5 trades  +0.75R  |  best GOLD  |  worst OIL_BRENT
+Reversal fired on 1 trades (avg +0.50R) vs 4 without (avg +0.06R)
+4 exit(s) estimated from the last quote, not observed
+```
+
+Everything is in **R** — what a trade returned as a multiple of what it risked —
+because R is scale-free: 0.1 lots and 10 lots on the same idea score identically,
+so the number measures the decisions rather than the position size.
+
+Two deliberate omissions. It does not report account currency, because broker
+fees, overnight charges and slippage are not captured and a figure that looks
+like a P&L statement but isn't one is worse than none. And it does not claim the
+reversal failsafe "saved" you anything — that needs a counterfactual nobody has,
+so it reports the two populations side by side and lets you judge.
+
+Exits the broker made (a stop-out, a target filled server-side) were never
+observed, so their price is estimated from the last quote and the count of
+estimates is printed. **The journal is written as trades close and cannot be
+reconstructed afterwards** — it has to be running before the trades are, or that
+period is simply unmeasured.
+
 ## Layout
 
 ```
@@ -335,6 +366,7 @@ tmbot/
     paper.py           In-memory netting broker for tests and offline runs
   analysis/
     chart.py           Annotated plan charts, light/dark, Arabic-shaped
+    journal.py         Performance aggregation in R
     reversal.py        Four-signal trend-reversal detection (deterministic)
     indicators.py      EMA/SMA/RSI/ATR/ADX/MACD/swings, pure Python
     levels.py          Zone clustering -> TP1/TP2/TP3 + SL
@@ -348,7 +380,7 @@ tmbot/
     supervisor.py      Poll loop, adoption, schedules, commands
   notify/              Console, Telegram (with command polling), fan-out
   cli.py
-tests/                 147 tests, no network
+tests/                 166 tests, no network
 ```
 
 The split that matters: `manage/rules.py` is pure. It takes a trade and a market

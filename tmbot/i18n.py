@@ -494,6 +494,7 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "/plan [epic]       show the stored plan levels\n"
             "/close <id>        close the remaining size now\n"
             "/be <id>           move the stop to entry now\n"
+            "/journal [days]    win rate, R per instrument, target hit rates\n"
             "/hold <id>         mute reversal alerts on one trade\n"
             "/lang en|ar        switch language\n"
             "/pause /resume     stop or restart all order modifications"
@@ -507,9 +508,58 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "‎/plan [epic]‎       عرض مستويات الخطة المحفوظة\n"
             "‎/close <id>‎        إغلاق الكمية المتبقية الآن\n"
             "‎/be <id>‎           نقل الوقف إلى سعر الدخول الآن\n"
+            "‎/journal [أيام]‎    نسبة الربح والأداء لكل أداة\n"
             "‎/hold <id>‎         كتم تنبيهات الانعكاس لصفقة واحدة\n"
             "‎/lang en|ar‎        تغيير اللغة\n"
             "‎/pause /resume‎     إيقاف أو استئناف تعديل الأوامر"
+        ),
+    },
+
+    # ---------------------------------------------------------------- journal
+    "journal.heading": {
+        "en": "Performance, last {days} days (R = multiples of risk)",
+        "ar": "الأداء خلال آخر {days} يومًا (R = مضاعفات المخاطرة)",
+    },
+    "journal.epic": {
+        "en": "{epic}   {trades} trades   {wins}W {losses}L   {total}R   avg {average}R",
+        "ar": "{epic}   {trades} صفقة   {wins} رابحة {losses} خاسرة   {total}R   المتوسط {average}R",
+    },
+    "journal.stage": {
+        "en": "{stage} {hits}/{trades} ({percent}%)",
+        "ar": "{stage} {hits}/{trades} ({percent}%)",
+    },
+    "journal.total": {
+        "en": "Total {trades} trades  {total}R  |  best {best}  |  worst {worst}",
+        "ar": "الإجمالي {trades} صفقة  {total}R  |  الأفضل {best}  |  الأسوأ {worst}",
+    },
+    "journal.reversal": {
+        "en": (
+            "Reversal fired on {count} trades (avg {with_avg}R) vs {without} "
+            "without (avg {without_avg}R)"
+        ),
+        "ar": (
+            "تم رصد انعكاس في {count} صفقة (المتوسط {with_avg}R) مقابل {without} "
+            "بدون انعكاس (المتوسط {without_avg}R)"
+        ),
+    },
+    "journal.inferred": {
+        "en": (
+            "{count} exit(s) estimated from the last quote, not observed -- "
+            "broker fees and slippage are not included anywhere here."
+        ),
+        "ar": (
+            "{count} خروج تم تقديره من آخر سعر وليس مرصودًا فعليًا — ورسوم المنصة "
+            "والانزلاق السعري غير محتسبة هنا إطلاقًا."
+        ),
+    },
+    "journal.empty": {
+        "en": (
+            "No closed trades in the last {days} days. The journal fills itself "
+            "as trades close; nothing is reconstructed afterwards."
+        ),
+        "ar": (
+            "لا توجد صفقات مغلقة خلال آخر {days} يومًا. يُبنى السجل مع إغلاق "
+            "الصفقات، ولا يمكن استرجاعه لاحقًا."
         ),
     },
 

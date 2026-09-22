@@ -13,11 +13,11 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-from .models import ManagedTrade, TradePlan, TradeStatus, utcnow
+from .models import Fill, ManagedTrade, TradePlan, TradeStatus, utcnow
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS plans (
@@ -57,6 +57,17 @@ CREATE TABLE IF NOT EXISTS events (
     kind       TEXT NOT NULL,
     message    TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS fills (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    deal_id    TEXT NOT NULL,
+    epic       TEXT NOT NULL,
+    ts         TEXT NOT NULL,
+    stage      TEXT NOT NULL,
+    payload    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS fills_ts ON fills(ts);
+CREATE INDEX IF NOT EXISTS fills_deal ON fills(deal_id);
 
 CREATE TABLE IF NOT EXISTS kv (
     key   TEXT PRIMARY KEY,
@@ -223,6 +234,48 @@ class Store:
             )
         ]
 
+    # ------------------------------------------------------------------ fills
+
+    def record_fill(self, fill: Fill) -> None:
+        """Append one closed portion.  Append-only: the record is the evidence."""
+        self._execute(
+            "INSERT INTO fills (deal_id, epic, ts, stage, payload) VALUES (?,?,?,?,?)",
+            (fill.deal_id, fill.epic, fill.ts.isoformat(), fill.stage,
+             json.dumps(fill.to_dict())),
+        )
+
+    def fills_for(self, deal_id: str) -> List[Fill]:
+        return [
+            Fill.from_dict(json.loads(row["payload"]))
+            for row in self._query(
+                "SELECT payload FROM fills WHERE deal_id = ? ORDER BY id", (deal_id,)
+            )
+        ]
+
+    def fills_since(self, since: datetime) -> List[Fill]:
+        return [
+            Fill.from_dict(json.loads(row["payload"]))
+            for row in self._query(
+                "SELECT payload FROM fills WHERE ts >= ? ORDER BY ts", (since.isoformat(),)
+            )
+        ]
+
+    def has_fill(self, deal_id: str, stage: str) -> bool:
+        """Guard against double-recording the same exit across a restart."""
+        rows = self._query(
+            "SELECT 1 FROM fills WHERE deal_id = ? AND stage = ? LIMIT 1",
+            (deal_id, stage),
+        )
+        return bool(rows)
+
+    def closed_trades_since(self, since: datetime) -> List[ManagedTrade]:
+        rows = self._query(
+            "SELECT payload FROM trades WHERE status = ? AND updated_at >= ? "
+            "ORDER BY updated_at",
+            (TradeStatus.CLOSED.value, since.isoformat()),
+        )
+        return [ManagedTrade.from_dict(json.loads(row["payload"])) for row in rows]
+
     # ------------------------------------------------------------------ events & kv
 
     def log_event(self, kind: str, message: str, *, deal_id: str = "", epic: str = "") -> None:
@@ -230,6 +283,14 @@ class Store:
             "INSERT INTO events (ts, deal_id, epic, kind, message) VALUES (?,?,?,?,?)",
             (utcnow().isoformat(), deal_id, epic, kind, message),
         )
+
+    def events_since(self, since: datetime, kind: Optional[str] = None) -> List[Dict[str, Any]]:
+        sql = "SELECT * FROM events WHERE ts >= ?"
+        params: List[Any] = [since.isoformat()]
+        if kind:
+            sql += " AND kind = ?"
+            params.append(kind)
+        return [dict(row) for row in self._query(sql + " ORDER BY ts", params)]
 
     def recent_events(self, limit: int = 30) -> List[Dict[str, Any]]:
         return [

@@ -46,6 +46,9 @@ class Decision:
     stop_level: Optional[float] = None
     profit_level: Optional[float] = None
     stage: Optional[Stage] = None
+    # The price a close is expected to fill at, so the result can be recorded
+    # without the engine having to re-read the market.
+    exit_price: Optional[float] = None
 
     def describe(self) -> str:
         if self.kind is DecisionKind.PARTIAL_CLOSE:
@@ -197,6 +200,7 @@ def evaluate(
                              "level": level, "price": price},
                 size=remaining,
                 stage=stage,
+                exit_price=price,
             ))
             remaining = 0.0
 
@@ -236,6 +240,7 @@ def evaluate(
                     reason_args={"stage": stage},
                     size=remaining,
                     stage=Stage(stage),
+                    exit_price=price,
                 ))
                 remaining = 0.0
                 break
@@ -256,6 +261,7 @@ def evaluate(
             reason_args={"stage": stage, "level": level, "price": price},
             size=size,
             stage=Stage(stage),
+            exit_price=price,
         ))
         remaining = round(remaining - size, 6)
 
@@ -328,6 +334,7 @@ def evaluate(
             reason_args={"stage": "TP3", "level": trade.tp3, "price": price},
             size=remaining,
             stage=Stage.TP3,
+            exit_price=price,
         ))
         remaining = 0.0
 
@@ -376,6 +383,7 @@ def evaluate(
                 reason_key="reason.reversal_close",
                 reason_args={"detail": signal.summary()},
                 size=remaining,
+                exit_price=price,
             ))
             remaining = 0.0
             stop_candidates.clear()
