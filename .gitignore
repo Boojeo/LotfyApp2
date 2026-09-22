@@ -9,3 +9,7 @@ dist/
 .env
 *.sqlite3
 reports/
+
+# Local settings -- never overwritten by an update.
+config.yaml
+settings-backup/
