@@ -100,6 +100,7 @@ class Supervisor:
             self.notifier.send(self.t("startup.hedging_off"), level="error")
         self._reconcile_pending_actions()
         self._register_commands()
+        self.notifier.set_tag(f"[{self.config.broker.environment.upper()}] ")
         self.notifier.set_translator(self.t)
         self.notifier.start()
         account = self.broker.account_summary()
@@ -776,7 +777,7 @@ class Supervisor:
             candles = self._cached_candles(
                 plan.epic, report.chart_timeframe, max(report.chart_bars * 2, 200)
             )
-            directory = Path(report.output_dir)
+            directory = Path(self.config.resolved_report_dir)
             path = directory / f"{plan.epic}-{plan.created_at:%Y%m%d-%H%M}.png"
             return chart_module.render(
                 plan, candles, path, t=self.t,
@@ -788,7 +789,7 @@ class Supervisor:
             return None
 
     def _write_report_file(self, plan: TradePlan) -> None:
-        directory = Path(self.config.report.output_dir)
+        directory = Path(self.config.resolved_report_dir)
         try:
             directory.mkdir(parents=True, exist_ok=True)
             path = directory / f"{plan.epic}-{plan.created_at:%Y%m%d-%H%M}.md"
@@ -895,6 +896,7 @@ class Supervisor:
             return self.t("command.language_usage", current=self.t.language)
         self.t = self.t.with_language(choice)
         self.engine.t = self.t
+        self.notifier.set_tag(f"[{self.config.broker.environment.upper()}] ")
         self.notifier.set_translator(self.t)
         self.store.set(LANGUAGE_KEY, choice)
         self.store.log_event("language", f"display language set to {choice}")

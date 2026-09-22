@@ -19,12 +19,33 @@ DEMO_BASE_URL = "https://demo-api-capital.backend-capital.com"
 
 
 @dataclass
-class BrokerConfig:
-    environment: str = ""            # "demo" | "live" -- required, never defaulted
+class AccountCredentials:
+    """One Capital.com account.  Demo and live are issued separate API keys."""
+
     api_key: str = ""
     identifier: str = ""             # account email
     password: str = ""
-    account_id: str = ""             # optional: switch to this account on connect
+    account_id: str = ""             # optional: switch to this sub-account
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.api_key and self.identifier and self.password)
+
+
+@dataclass
+class BrokerConfig:
+    environment: str = ""            # "demo" | "live" -- required, never defaulted
+    # Flat fields are the shared fallback, so a single-account setup keeps
+    # working untouched. Per-environment credentials override them.
+    api_key: str = ""
+    identifier: str = ""             # account email
+    password: str = ""
+    account_id: str = ""
+    demo: AccountCredentials = field(default_factory=AccountCredentials)
+    live: AccountCredentials = field(default_factory=AccountCredentials)
+    # Live must be switched on deliberately, in the config file, as well as
+    # chosen on the command line. Two separate acts, neither accidental.
+    live_enabled: bool = False
     timeout: float = 20.0
     retry_attempts: int = 5
     retry_base_delay: float = 1.0
@@ -33,6 +54,17 @@ class BrokerConfig:
     circuit_cooldown: float = 90.0
     keepalive_seconds: float = 240.0  # session tokens idle out around 10 min
     partial_close_strategy: str = "probe"  # probe | delete_with_size | netting_offset
+
+    @property
+    def active(self) -> AccountCredentials:
+        """Credentials for the environment currently selected."""
+        chosen = self.live if self.environment == "live" else self.demo
+        return AccountCredentials(
+            api_key=chosen.api_key or self.api_key,
+            identifier=chosen.identifier or self.identifier,
+            password=chosen.password or self.password,
+            account_id=chosen.account_id or self.account_id,
+        )
 
     @property
     def base_url(self) -> str:
@@ -194,26 +226,64 @@ class Config:
     # lines stay English so they remain greppable and portable.
     language: str = "en"
 
+    def _per_environment(self, value: str) -> str:
+        """Suffix a path with the environment.
+
+        Not optional, and not a setting. Sharing one database between demo and
+        live blends practice results into the journal and makes the only
+        measure of whether this works meaningless.
+        """
+        environment = self.broker.environment or "unset"
+        path = Path(value)
+        if path.suffix:
+            return str(path.with_name(f"{path.stem}-{environment}{path.suffix}"))
+        return str(path / environment)
+
+    @property
+    def resolved_database(self) -> str:
+        return self._per_environment(self.database)
+
+    @property
+    def resolved_report_dir(self) -> str:
+        return self._per_environment(self.report.output_dir)
+
     def epic_config(self, epic: str) -> EpicConfig:
         for item in self.analysis.watchlist:
             if item.epic.upper() == epic.upper():
                 return item
         return EpicConfig(epic=epic, display=epic, news_query=epic)
 
-    def validate(self) -> None:
+    def validate(self, *, connecting: bool = True) -> None:
+        """Check the configuration.
+
+        ``connecting`` is False for commands that only read settings back, so
+        a missing key or a disabled live account is reported by the command
+        itself rather than stopping you from looking at it.
+        """
         if self.broker.environment not in ("demo", "live"):
             raise ConfigError(
                 "broker.environment must be 'demo' or 'live' -- pass --env on the command line"
             )
+        environment = self.broker.environment.upper()
+        active = self.broker.active
         missing = [
             name for name, value in (
-                ("CAPITAL_API_KEY", self.broker.api_key),
-                ("CAPITAL_IDENTIFIER", self.broker.identifier),
-                ("CAPITAL_PASSWORD", self.broker.password),
+                (f"CAPITAL_{environment}_API_KEY", active.api_key),
+                (f"CAPITAL_{environment}_IDENTIFIER", active.identifier),
+                (f"CAPITAL_{environment}_PASSWORD", active.password),
             ) if not value
         ]
-        if missing:
-            raise ConfigError(f"missing broker credentials: {', '.join(missing)}")
+        if missing and connecting:
+            raise ConfigError(
+                f"no {self.broker.environment} credentials: set "
+                f"{', '.join(missing)} in .env"
+            )
+        if connecting and self.broker.environment == "live" and not self.broker.live_enabled:
+            raise ConfigError(
+                "live trading is switched off. Set broker.live_enabled: true in "
+                "your config file to enable it -- choosing --env live alone is "
+                "deliberately not enough."
+            )
         if self.management.exit_model not in ("partial_close", "three_deals"):
             raise ConfigError(
                 "management.exit_model must be 'partial_close' or 'three_deals'"
@@ -266,6 +336,8 @@ def _coerce(cls: Any, raw: Any) -> Any:
             ]
         elif key == "ladder":
             kwargs[key] = [LadderStep(**item) for item in value]
+        elif key in ("demo", "live") and isinstance(value, dict):
+            kwargs[key] = AccountCredentials(**value)
         elif isinstance(value, dict) and isinstance(field_type, str) and field_type in _NESTED:
             kwargs[key] = _coerce(_NESTED[field_type], value)
         else:
@@ -275,6 +347,7 @@ def _coerce(cls: Any, raw: Any) -> Any:
 
 _NESTED = {
     "BrokerConfig": BrokerConfig,
+    "AccountCredentials": AccountCredentials,
     "ManagementConfig": ManagementConfig,
     "ReversalConfig": ReversalConfig,
     "AnalysisConfig": AnalysisConfig,
@@ -306,10 +379,40 @@ def apply_env(config: Config) -> Config:
     config.broker.identifier = env.get("CAPITAL_IDENTIFIER", config.broker.identifier)
     config.broker.password = env.get("CAPITAL_PASSWORD", config.broker.password)
     config.broker.account_id = env.get("CAPITAL_ACCOUNT_ID", config.broker.account_id)
+    for name in ("demo", "live"):
+        account = getattr(config.broker, name)
+        prefix = f"CAPITAL_{name.upper()}_"
+        account.api_key = env.get(f"{prefix}API_KEY", account.api_key)
+        account.identifier = env.get(f"{prefix}IDENTIFIER", account.identifier)
+        account.password = env.get(f"{prefix}PASSWORD", account.password)
+        account.account_id = env.get(f"{prefix}ACCOUNT_ID", account.account_id)
+
     config.news.api_key = env.get("NEWS_API_KEY", config.news.api_key)
     config.llm.api_key = env.get("ANTHROPIC_API_KEY", config.llm.api_key)
     config.telegram.bot_token = env.get("TELEGRAM_BOT_TOKEN", config.telegram.bot_token)
     config.telegram.chat_id = env.get("TELEGRAM_CHAT_ID", config.telegram.chat_id)
+    if config.telegram.bot_token and config.telegram.chat_id:
+        config.telegram.enabled = True
+    return config
+
+
+def resolve_environment_secrets(config: Config) -> Config:
+    """Re-read the secrets that depend on which environment was chosen.
+
+    Called after ``--env`` is applied. Running demo and live at once against a
+    single Telegram bot token breaks both: two pollers on one token steal each
+    other's updates, so commands land in whichever process grabbed them first.
+    A per-environment token avoids that entirely.
+    """
+    import os
+    environment = config.broker.environment.upper()
+    if environment:
+        config.telegram.bot_token = os.environ.get(
+            f"TELEGRAM_{environment}_BOT_TOKEN", config.telegram.bot_token
+        )
+        config.telegram.chat_id = os.environ.get(
+            f"TELEGRAM_{environment}_CHAT_ID", config.telegram.chat_id
+        )
     if config.telegram.bot_token and config.telegram.chat_id:
         config.telegram.enabled = True
     return config

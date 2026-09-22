@@ -40,7 +40,7 @@ class TelegramNotifier(Notifier):
     # ------------------------------------------------------------------ outbound
 
     def send(self, message: str, *, level: str = "info") -> None:
-        text = f"{self.PREFIX.get(level, '')}{message}"
+        text = f"{self.PREFIX.get(level, '')}{self.decorate(message)}"
         for chunk in _chunks(text, MAX_MESSAGE):
             try:
                 response = self._http.post(
@@ -59,7 +59,7 @@ class TelegramNotifier(Notifier):
 
     def send_photo(self, path: str, caption: str = "", *, level: str = "info") -> None:
         """Upload a chart.  Falls back to the caption alone if the upload fails."""
-        text = f"{self.PREFIX.get(level, '')}{caption}"[:1000]
+        text = f"{self.PREFIX.get(level, '')}{self.decorate(caption)}"[:1000]
         try:
             with open(path, "rb") as handle:
                 response = self._http.post(

@@ -10,8 +10,12 @@ log_level: INFO
 language: en
 
 broker:
-  # environment is set from the command line (--env demo|live) and has no
-  # default on purpose.
+  # The environment is chosen on the command line (--env demo|live) and has no
+  # default on purpose. Credentials for each live in .env.
+  #
+  # Live trading needs BOTH of these: live_enabled true here, and --env live
+  # on the command line. Either one alone is refused.
+  live_enabled: false
   timeout: 20.0
   retry_attempts: 5
   circuit_threshold: 5

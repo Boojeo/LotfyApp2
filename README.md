@@ -109,6 +109,34 @@ cp config.example.yaml config.yaml
 Fill in `.env` with a Capital.com API key (Settings → API integrations; demo and
 live need separate keys).
 
+## Demo and live together
+
+Both accounts are configured at once and chosen per run. Capital.com issues
+separate API keys for each, so `.env` holds `CAPITAL_DEMO_*` and
+`CAPITAL_LIVE_*` (a single `CAPITAL_*` set still works and is used for both).
+
+```bash
+python -m tmbot --env demo --config config.yaml envs   # what is configured, and where it stores data
+python -m tmbot --env demo --config config.yaml run
+python -m tmbot --env live --config config.yaml run
+```
+
+**Nothing is shared between them.** The database and the reports directory are
+suffixed with the environment automatically — `tmbot-demo.sqlite3` and
+`tmbot-live.sqlite3`. That is not a setting: one journal holding both would mix
+practice results into your live record and destroy the only measure of whether
+this works. Every alert is stamped `[DEMO]` or `[LIVE]` so an alert is never
+ambiguous.
+
+Both can run at the same time, in separate windows. If you do, give each its own
+Telegram bot (`TELEGRAM_DEMO_BOT_TOKEN` / `TELEGRAM_LIVE_BOT_TOKEN`) — two
+pollers on one token steal each other's updates, and commands would land in
+whichever process grabbed them first.
+
+**Live takes two deliberate acts**: `broker.live_enabled: true` in the config
+file *and* `--env live` on the command line. Either alone is refused, so no
+single typo can point the bot at real money.
+
 ## Run
 
 `--env` is mandatory and has no default, so a live account is never touched by
@@ -380,7 +408,7 @@ tmbot/
     supervisor.py      Poll loop, adoption, schedules, commands
   notify/              Console, Telegram (with command polling), fan-out
   cli.py
-tests/                 166 tests, no network
+tests/                 182 tests, no network
 ```
 
 The split that matters: `manage/rules.py` is pure. It takes a trade and a market

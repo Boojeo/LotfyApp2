@@ -72,6 +72,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("status", help="show managed positions and ladder state")
     sub.add_parser("positions", help="list raw open positions at the broker")
     sub.add_parser(
+        "envs",
+        help="show which environments are configured and where each stores data",
+    )
+    sub.add_parser(
         "check",
         help="read back your settings without connecting to anything -- "
              "run this after editing config.yaml",
@@ -90,15 +94,19 @@ def _configure_logging(level: str) -> None:
 
 
 def _load_config(args: argparse.Namespace) -> Config:
+    # These only read settings back, so they must work even when something is
+    # missing -- that is exactly when you need to look.
+    inspecting = args.command in ("envs", "check")
     config = config_module.load(args.config)
     config.broker.environment = args.env
+    config_module.resolve_environment_secrets(config)
     if args.dry_run:
         config.dry_run = True
     if args.log_level:
         config.log_level = args.log_level
     if args.lang:
         config.language = args.lang
-    config.validate()
+    config.validate(connecting=not inspecting)
     return config
 
 
@@ -123,7 +131,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if config.broker.environment == "live" and not config.dry_run:
         log.warning("connected to the LIVE account -- real orders will be modified")
 
-    store = Store(config.database)
+    store = Store(config.resolved_database)
     broker = CapitalComBroker(config.broker)
     notifier = _build_notifier(config, store)
 
@@ -140,6 +148,43 @@ def main(argv: Optional[List[str]] = None) -> int:
             supervisor.run()
             return 0
 
+        if args.command == "envs":
+            settings = config.broker
+            print(f"selected      {settings.environment}")
+            print()
+            for name in ("demo", "live"):
+                account = getattr(settings, name)
+                shared = bool(
+                    settings.api_key and settings.identifier and settings.password
+                )
+                ready = account.configured or shared
+                source = (
+                    f"CAPITAL_{name.upper()}_*" if account.configured
+                    else ("CAPITAL_* (shared)" if shared else "not set")
+                )
+                marker = "->" if name == settings.environment else "  "
+                gate = ""
+                if name == "live":
+                    gate = "  [live_enabled: {}]".format(
+                        "yes" if settings.live_enabled else "NO -- live refused"
+                    )
+                print(f"{marker} {name:<5} {'ready' if ready else 'missing':<8} "
+                      f"{source}{gate}")
+                environment_config = Config()
+                environment_config.database = config.database
+                environment_config.report = config.report
+                environment_config.broker.environment = name
+                print(f"      database  {environment_config.resolved_database}")
+                print(f"      reports   {environment_config.resolved_report_dir}")
+                if account.account_id:
+                    print(f"      sub-account {account.account_id}")
+            print()
+            print("Demo and live never share a database, so practice results "
+                  "cannot leak into your live journal.")
+            print("Switch with --env demo | --env live. Both can run at once, "
+                  "in separate windows.")
+            return 0
+
         if args.command == "journal":
             from .analysis import journal as journal_module
             from .i18n import Translator
@@ -153,7 +198,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             management = config.management
             print(f"config file   {args.config or '(defaults, no file given)'}")
             print(f"environment   {config.broker.environment}")
-            print(f"database      {config.database}")
+            print(f"database      {config.resolved_database}")
+            print(f"reports       {config.resolved_report_dir}")
             print()
             print(f"exit model    {management.exit_model}")
             if management.exit_model == "three_deals":

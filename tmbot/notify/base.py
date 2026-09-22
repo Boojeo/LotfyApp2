@@ -15,6 +15,16 @@ CommandHandler = Callable[[str], str]
 
 
 class Notifier(ABC):
+    #: Prefix stamped on every message, e.g. "[LIVE] ". With demo and live
+    #: running side by side, an untagged alert is an alert you have to guess at.
+    tag: str = ""
+
+    def set_tag(self, tag: str) -> None:
+        self.tag = tag
+
+    def decorate(self, message: str) -> str:
+        return f"{self.tag}{message}" if self.tag else message
+
     @abstractmethod
     def send(self, message: str, *, level: str = "info") -> None:
         ...
@@ -41,7 +51,7 @@ class ConsoleNotifier(Notifier):
     LEVELS = {"info": logging.INFO, "warn": logging.WARNING, "error": logging.ERROR}
 
     def send(self, message: str, *, level: str = "info") -> None:
-        log.log(self.LEVELS.get(level, logging.INFO), "%s", message)
+        log.log(self.LEVELS.get(level, logging.INFO), "%s", self.decorate(message))
 
     def send_photo(self, path: str, caption: str = "", *, level: str = "info") -> None:
         self.send(f"{caption}\n[chart: {path}]" if caption else f"[chart: {path}]",
@@ -54,7 +64,7 @@ class NullNotifier(Notifier):
         self.photos: List[tuple[str, str]] = []
 
     def send(self, message: str, *, level: str = "info") -> None:
-        self.messages.append((level, message))
+        self.messages.append((level, self.decorate(message)))
 
     def send_photo(self, path: str, caption: str = "", *, level: str = "info") -> None:
         self.photos.append((path, caption))
@@ -92,6 +102,11 @@ class MultiNotifier(Notifier):
     def set_translator(self, t: Translator) -> None:
         for notifier in self.notifiers:
             notifier.set_translator(t)
+
+    def set_tag(self, tag: str) -> None:
+        self.tag = tag
+        for notifier in self.notifiers:
+            notifier.set_tag(tag)
 
     def start(self) -> None:
         for notifier in self.notifiers:

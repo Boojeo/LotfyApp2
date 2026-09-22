@@ -62,8 +62,9 @@ class CapitalComBroker(BrokerAdapter):
 
     def connect(self) -> None:
         self._authenticate()
-        if self.config.account_id:
-            self._request("PUT", "/api/v1/session", json={"accountId": self.config.account_id})
+        account_id = self.config.active.account_id
+        if account_id:
+            self._request("PUT", "/api/v1/session", json={"accountId": account_id})
         log.info("connected to %s (%s)", self.config.base_url, self.config.environment)
 
     def close(self) -> None:
@@ -77,13 +78,14 @@ class CapitalComBroker(BrokerAdapter):
 
     def _authenticate(self) -> None:
         url = f"{self.config.base_url}/api/v1/session"
+        account = self.config.active
         payload = {
-            "identifier": self.config.identifier,
-            "password": self.config.password,
+            "identifier": account.identifier,
+            "password": account.password,
             "encryptedPassword": False,
         }
         headers = {
-            "X-CAP-API-KEY": self.config.api_key,
+            "X-CAP-API-KEY": account.api_key,
             "Content-Type": "application/json",
         }
 
@@ -124,7 +126,7 @@ class CapitalComBroker(BrokerAdapter):
 
     def _headers(self) -> Dict[str, str]:
         return {
-            "X-CAP-API-KEY": self.config.api_key,
+            "X-CAP-API-KEY": self.config.active.api_key,
             "CST": self._cst or "",
             "X-SECURITY-TOKEN": self._security_token or "",
             "Content-Type": "application/json",
@@ -164,7 +166,10 @@ class CapitalComBroker(BrokerAdapter):
         payload = {k: v for k, v in (json or {}).items() if v is not None} if json else None
 
         def attempt() -> Dict[str, Any]:
-            headers = self._headers() if authenticated else {"X-CAP-API-KEY": self.config.api_key}
+            headers = (
+                self._headers() if authenticated
+                else {"X-CAP-API-KEY": self.config.active.api_key}
+            )
             try:
                 response = self._http.request(
                     method, url, json=payload, params=params,
@@ -207,7 +212,7 @@ class CapitalComBroker(BrokerAdapter):
         self.ensure_session()
         data = self._request("GET", "/api/v1/accounts")
         accounts = data.get("accounts", [])
-        preferred = self.config.account_id
+        preferred = self.config.active.account_id
         for account in accounts:
             if preferred and account.get("accountId") == preferred:
                 return account
