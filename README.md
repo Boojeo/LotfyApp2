@@ -11,6 +11,22 @@ derived from support/resistance and liquidity zones.
 
 ---
 
+## Languages
+
+English and Arabic, switched live with `/lang ar` / `/lang en` or `--lang` on
+the command line. Two rules make the switch safe with positions open:
+
+- **Nothing stored is translated.** `BUY`, `MANAGING`, `TP1` stay English in
+  SQLite and on the wire. Switching re-renders text; it never rewrites a record.
+- **Every interpolated value is bidi-isolated in Arabic.** A price dropped raw
+  into right-to-left text renders scrambled — `SL 3398.10` can come out with its
+  digits reordered. Each value is wrapped in FSI/PDI so it lays out on its own.
+
+Log lines stay English deliberately, so they stay greppable and can be pasted
+into a search or an issue whatever language the UI is in. Each decision carries
+both forms: a translated `reason_key` for you and an English `reason` for the
+log and the action journal.
+
 ## What it does
 
 **1. Daily analytical report (technical + fundamental)**
@@ -278,6 +294,7 @@ that and re-maps the trade rather than reporting it closed.
 ```
 tmbot/
   config.py            YAML behaviour + environment secrets
+  i18n.py              English/Arabic catalogue, bidi isolation, term lookup
   models.py            Direction, Candle, Quote, MarketRules, TradePlan, ManagedTrade
   store.py             SQLite: plans, trades, action journal, events
   broker/
@@ -297,7 +314,7 @@ tmbot/
     supervisor.py      Poll loop, adoption, schedules, commands
   notify/              Console, Telegram (with command polling), fan-out
   cli.py
-tests/                 107 tests, no network
+tests/                 121 tests, no network
 ```
 
 The split that matters: `manage/rules.py` is pure. It takes a trade and a market

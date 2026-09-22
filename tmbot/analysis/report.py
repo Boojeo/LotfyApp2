@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from ..broker.base import BrokerAdapter
 from ..config import Config
+from ..i18n import Translator
 from ..models import Bias, Direction, TradePlan, utcnow
 from . import bias as bias_module
 from . import fundamental as fundamental_module
@@ -106,11 +107,11 @@ class ReportBuilder:
 
     # ------------------------------------------------------------------ rendering
 
-    def render_markdown(self, plan: TradePlan) -> str:
-        return render_markdown(plan)
+    def render_markdown(self, plan: TradePlan, t: Optional[Translator] = None) -> str:
+        return render_markdown(plan, t)
 
-    def render_text(self, plan: TradePlan) -> str:
-        return render_text(plan)
+    def render_text(self, plan: TradePlan, t: Optional[Translator] = None) -> str:
+        return render_text(plan, t)
 
 
 def _combine(
@@ -143,33 +144,30 @@ def _combined_confidence(
     return round(min(100.0, base), 1)
 
 
-def _arrow(bias: Bias) -> str:
-    return {Bias.BULLISH: "BULLISH", Bias.BEARISH: "BEARISH", Bias.NEUTRAL: "NEUTRAL"}[bias]
-
-
-def render_markdown(plan: TradePlan) -> str:
+def render_markdown(plan: TradePlan, t: Optional[Translator] = None) -> str:
+    t = t or Translator()
     technical = plan.technical
     fundamental = plan.fundamental
     risk = plan.risk
     lines: List[str] = [
-        f"# {plan.epic} -- daily plan {plan.created_at:%Y-%m-%d %H:%M UTC}",
+        "# " + t("report.title", epic=plan.epic,
+                 timestamp=f"{plan.created_at:%Y-%m-%d %H:%M UTC}"),
         "",
-        f"**Direction bias: {_arrow(plan.bias)}**  (confidence {plan.confidence:.0f}/100)",
+        "**" + t("report.bias", bias=t.bias_name(plan.bias),
+                 confidence=f"{plan.confidence:.0f}") + "**",
     ]
     if plan.advisory_only:
         lines.append("")
-        lines.append(
-            "> Bias is NEUTRAL. Levels below are reference only -- the bot will still "
-            "manage a position you open, but nothing here argues for taking one."
-        )
+        lines.append("> " + t("report.advisory"))
     lines += [
         "",
-        f"Reference price {plan.reference_price} | ATR {plan.atr:.4f} | "
-        f"risk to stop {risk:.4f}",
+        t("report.reference", price=plan.reference_price,
+          atr=f"{plan.atr:.4f}", risk=f"{risk:.4f}"),
         "",
-        "## Levels",
+        "## " + t("report.levels_heading"),
         "",
-        "| Level | Price | Distance | R multiple |",
+        f"| {t('report.col_level')} | {t('report.col_price')} | "
+        f"{t('report.col_distance')} | {t('report.col_r')} |",
         "| --- | --- | --- | --- |",
     ]
     for name, price in (("TP1", plan.tp1), ("TP2", plan.tp2), ("TP3", plan.tp3)):
@@ -182,13 +180,17 @@ def render_markdown(plan: TradePlan) -> str:
         "",
         f"_{plan.narrative}_",
         "",
-        "## Technical",
+        "## " + t("report.technical_heading"),
         "",
-        f"Score {technical.get('score')} ({technical.get('bias')}), "
-        f"ADX {technical.get('adx')} ({technical.get('strength')}), "
-        f"RSI {technical.get('rsi')}",
+        t("report.technical_summary",
+          score=technical.get("score"),
+          bias=t.bias_name(technical.get("bias", "")),
+          adx=technical.get("adx"),
+          strength=t.strength_name(technical.get("strength", "")),
+          rsi=technical.get("rsi")),
         "",
-        "| Factor | Value | Weight | Detail |",
+        f"| {t('report.col_factor')} | {t('report.col_value')} | "
+        f"{t('report.col_weight')} | {t('report.col_detail')} |",
         "| --- | --- | --- | --- |",
     ]
     for factor in technical.get("factors", []):
@@ -198,50 +200,61 @@ def render_markdown(plan: TradePlan) -> str:
         )
     lines += [
         "",
-        "## Fundamental / news",
+        "## " + t("report.fundamental_heading"),
         "",
-        f"**{fundamental.get('bias')}** (confidence {fundamental.get('confidence')}, "
-        f"source `{fundamental.get('source')}`)",
+        "**" + t("report.fundamental_summary",
+                 bias=t.bias_name(fundamental.get("bias", "")),
+                 confidence=fundamental.get("confidence"),
+                 source=fundamental.get("source")) + "**",
         "",
         fundamental.get("summary", ""),
     ]
-    for label, key in (("Drivers", "drivers"), ("Risks", "risks"), ("Catalysts", "catalysts")):
+    for label, key in (
+        (t("report.drivers"), "drivers"),
+        (t("report.risks"), "risks"),
+        (t("report.catalysts"), "catalysts"),
+    ):
         items = fundamental.get(key) or []
         if items:
             lines += ["", f"**{label}**"] + [f"- {item}" for item in items]
 
     key_levels = [level for level in plan.levels if level.is_liquidity][:5]
     if key_levels:
-        lines += ["", "## Liquidity zones", ""]
+        lines += ["", "## " + t("report.liquidity_heading"), ""]
         lines += [
             f"- {level.price:.4f} ({level.label}, score {level.score:.2f})"
             for level in key_levels
         ]
 
     if plan.headlines:
-        lines += ["", "## Headlines", ""]
+        lines += ["", "## " + t("report.headlines_heading"), ""]
         for item in plan.headlines[:8]:
             title = item.get("title", "")
             url = item.get("url", "")
             lines.append(f"- [{title}]({url})" if url else f"- {title}")
 
-    lines += ["", f"_plan id: {plan.plan_id}_"]
+    lines += ["", "_" + t("report.plan_id", id=plan.plan_id) + "_"]
     return "\n".join(lines)
 
 
-def render_text(plan: TradePlan) -> str:
+def render_text(plan: TradePlan, t: Optional[Translator] = None) -> str:
     """Compact form for chat notifications."""
+    t = t or Translator()
     lines = [
-        f"{plan.epic} -- {_arrow(plan.bias)} ({plan.confidence:.0f}/100)"
-        + ("  [advisory only]" if plan.advisory_only else ""),
-        f"ref {plan.reference_price}  ATR {plan.atr:.4f}",
+        t("report.bias", bias=t.bias_name(plan.bias), confidence=f"{plan.confidence:.0f}")
+        + (t("report.advisory_tag") if plan.advisory_only else ""),
+        t("report.reference", price=plan.reference_price,
+          atr=f"{plan.atr:.4f}", risk=f"{plan.risk:.4f}"),
         f"TP1 {plan.tp1}  ({plan.reward_risk(plan.tp1):.2f}R)",
         f"TP2 {plan.tp2}  ({plan.reward_risk(plan.tp2):.2f}R)",
         f"TP3 {plan.tp3}  ({plan.reward_risk(plan.tp3):.2f}R)",
         f"SL  {plan.sl}",
         "",
-        f"tech {plan.technical.get('score')} / {plan.technical.get('strength')}"
-        f" | news {plan.fundamental.get('bias')} ({plan.fundamental.get('source')})",
+        t("report.tech_label",
+          score=plan.technical.get("score"),
+          strength=t.strength_name(plan.technical.get("strength", "")),
+          bias=t.bias_name(plan.fundamental.get("bias", "")),
+          source=plan.fundamental.get("source")),
         plan.fundamental.get("summary", "")[:400],
     ]
-    return "\n".join(lines)
+    return f"{plan.epic} -- " + "\n".join(lines)

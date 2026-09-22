@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .errors import ConfigError
+from .i18n import LANGUAGES
 
 LIVE_BASE_URL = "https://api-capital.backend-capital.com"
 DEMO_BASE_URL = "https://demo-api-capital.backend-capital.com"
@@ -165,6 +166,9 @@ class Config:
     database: str = "tmbot.sqlite3"
     log_level: str = "INFO"
     dry_run: bool = False
+    # Display language for alerts, commands and reports. Stored records and log
+    # lines stay English so they remain greppable and portable.
+    language: str = "en"
 
     def epic_config(self, epic: str) -> EpicConfig:
         for item in self.analysis.watchlist:
@@ -206,6 +210,10 @@ class Config:
                 )
         if self.telegram.enabled and not (self.telegram.bot_token and self.telegram.chat_id):
             raise ConfigError("telegram.enabled is true but bot_token/chat_id are not set")
+        if self.language not in LANGUAGES:
+            raise ConfigError(
+                f"language must be one of {', '.join(LANGUAGES)}, got {self.language!r}"
+            )
         if self.management.on_indivisible_size not in ("hold", "close_all"):
             raise ConfigError("management.on_indivisible_size must be 'hold' or 'close_all'")
 

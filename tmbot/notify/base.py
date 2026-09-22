@@ -6,6 +6,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Callable, Dict, List, Optional
 
+from ..i18n import Translator
+
 log = logging.getLogger(__name__)
 
 # A command handler takes the argument string and returns the reply text.
@@ -19,6 +21,9 @@ class Notifier(ABC):
 
     def register(self, command: str, handler: CommandHandler) -> None:
         """Wire up a chat command.  No-op for notifiers without an input side."""
+
+    def set_translator(self, t: Translator) -> None:
+        """Adopt the active display language.  Called again after /lang."""
 
     def start(self) -> None:
         """Begin listening for commands, if the transport supports it."""
@@ -60,6 +65,10 @@ class MultiNotifier(Notifier):
         self._commands[command] = handler
         for notifier in self.notifiers:
             notifier.register(command, handler)
+
+    def set_translator(self, t: Translator) -> None:
+        for notifier in self.notifiers:
+            notifier.set_translator(t)
 
     def start(self) -> None:
         for notifier in self.notifiers:

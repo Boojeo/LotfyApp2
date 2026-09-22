@@ -8,9 +8,9 @@ nothing, which is what makes the whole ladder testable: every scenario in
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from ..config import ManagementConfig
 from ..models import (
@@ -35,7 +35,12 @@ class Decision:
     kind: DecisionKind
     deal_id: str
     key: str            # idempotency key -- the journal is keyed on this
-    reason: str
+    reason: str         # English, for the log and the action journal
+    # Translation key and arguments for the same reason, rendered per language
+    # at the notification layer. `reason` stays English so the audit trail and
+    # the logs are searchable whatever the display language.
+    reason_key: str = ""
+    reason_args: Dict[str, Any] = field(default_factory=dict)
     size: Optional[float] = None
     stop_level: Optional[float] = None
     profit_level: Optional[float] = None
@@ -184,6 +189,9 @@ def evaluate(
                     f"leg {trade.leg_index + 1} target {stage.value} {level} "
                     f"reached at {price}"
                 ),
+                reason_key="reason.leg_target",
+                reason_args={"index": trade.leg_index + 1, "stage": stage.value,
+                             "level": level, "price": price},
                 size=remaining,
                 stage=stage,
             ))
@@ -217,7 +225,12 @@ def evaluate(
                     kind=DecisionKind.CLOSE_ALL,
                     deal_id=trade.deal_id,
                     key=f"{trade.deal_id}:close:{stage}",
-                    reason=f"{stage} hit and the remainder would be below the minimum deal size",
+                    reason=(
+                        f"{stage} hit and the remainder would be below the "
+                        "minimum deal size"
+                    ),
+                    reason_key="reason.indivisible",
+                    reason_args={"stage": stage},
                     size=remaining,
                     stage=Stage(stage),
                 ))
@@ -236,6 +249,8 @@ def evaluate(
             deal_id=trade.deal_id,
             key=f"{trade.deal_id}:partial:{stage}",
             reason=f"{stage} {level} reached at {price}",
+            reason_key="reason.stage_reached",
+            reason_args={"stage": stage, "level": level, "price": price},
             size=size,
             stage=Stage(stage),
         ))
@@ -254,6 +269,8 @@ def evaluate(
                 deal_id=trade.deal_id,
                 key=f"{trade.deal_id}:breakeven",
                 reason=f"{config.breakeven_stage} reached -- stop to entry {level}",
+                reason_key="reason.breakeven",
+                reason_args={"stage": config.breakeven_stage, "level": level},
                 stop_level=level,
             ))
         else:
@@ -292,6 +309,10 @@ def evaluate(
                 f"strong trend into TP3 {trade.tp3} -- extending to {extended} "
                 f"(extension {trade.tp3_extensions + 1}/{config.tp3_max_extensions})"
             ),
+            reason_key="reason.extend",
+            reason_args={"stage": "TP3", "level": trade.tp3, "new": extended,
+                         "count": trade.tp3_extensions + 1,
+                         "limit": config.tp3_max_extensions},
             profit_level=extended,
             stage=Stage.TP3,
         ))
@@ -301,6 +322,8 @@ def evaluate(
             deal_id=trade.deal_id,
             key=f"{trade.deal_id}:close:TP3",
             reason=f"TP3 {trade.tp3} reached at {price}",
+            reason_key="reason.stage_reached",
+            reason_args={"stage": "TP3", "level": trade.tp3, "price": price},
             size=remaining,
             stage=Stage.TP3,
         ))
@@ -355,6 +378,10 @@ def evaluate(
                             f"{snapshot.strength.value} trend, k={multiplier}, "
                             f"best {trade.best_price}, ATR {snapshot.atr:.5f} -> stop {candidate}"
                         ),
+                        reason_key="reason.trail",
+                        reason_args={"strength": snapshot.strength.value,
+                                     "k": multiplier, "best": trade.best_price,
+                                     "atr": f"{snapshot.atr:.5f}", "level": candidate},
                         stop_level=candidate,
                     )]
 

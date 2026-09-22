@@ -9,13 +9,14 @@ that did not move is risk the user thinks is gone.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 
 from ..broker.base import BrokerAdapter, PartialCloseStrategy
 from ..config import Config
 from ..errors import NotSupportedError, PermanentError, RetryableError
 from ..models import BrokerPosition, Direction, ManagedTrade, TradeStatus, utcnow
+from ..i18n import Translator
 from ..notify.base import Notifier
 from ..store import Store
 from .rules import Decision, DecisionKind, Evaluation
@@ -32,6 +33,27 @@ class TradeEngine:
     store: Store
     config: Config
     notifier: Notifier
+    t: Translator = field(default_factory=Translator)
+
+    def describe(self, decision: Decision) -> str:
+        """Render a decision for the user, in their language.
+
+        ``Decision.describe`` stays English for the log and the action journal;
+        this is the display form.
+        """
+        stage = decision.stage.value if decision.stage else "?"
+        reason = (
+            self.t(decision.reason_key, **decision.reason_args)
+            if decision.reason_key else decision.reason
+        )
+        if decision.kind is DecisionKind.PARTIAL_CLOSE:
+            return self.t("action.partial_close", size=decision.size,
+                          stage=stage, reason=reason)
+        if decision.kind is DecisionKind.CLOSE_ALL:
+            return self.t("action.close_all", size=decision.size, reason=reason)
+        if decision.kind is DecisionKind.SET_STOP:
+            return self.t("action.set_stop", level=decision.stop_level, reason=reason)
+        return self.t("action.set_target", level=decision.profit_level, reason=reason)
 
     # ------------------------------------------------------------------ sync
 
@@ -92,8 +114,8 @@ class TradeEngine:
                     deal_id=trade.deal_id, epic=trade.epic,
                 )
                 self.notifier.send(
-                    f"FAILED on {trade.epic} ({trade.short_id}): {decision.describe()}\n"
-                    f"{exc}\nThe broker rejected this -- check the position manually.",
+                    self.t("action.failed", epic=trade.epic, id=trade.short_id,
+                           action=self.describe(decision), error=exc),
                     level="error",
                 )
                 break
@@ -103,7 +125,7 @@ class TradeEngine:
                     decision.kind.value, decision.describe(),
                     deal_id=trade.deal_id, epic=trade.epic,
                 )
-                applied.append(decision.describe())
+                applied.append(self.describe(decision))
 
         if applied:
             self.store.save_trade(trade)
@@ -201,9 +223,8 @@ class TradeEngine:
         if position is None:
             if expected > SIZE_TOLERANCE:
                 self.notifier.send(
-                    f"WARNING {trade.epic} ({trade.short_id}): asked to close {size} but the "
-                    f"whole position is gone (expected {expected} to remain). "
-                    "Partial closes are being disabled for safety -- check the account.",
+                    self.t("action.overclosed", epic=trade.epic, id=trade.short_id,
+                           size=size, expected=expected),
                     level="error",
                 )
                 self.broker.partial_close_strategy = PartialCloseStrategy.UNSUPPORTED
@@ -211,7 +232,7 @@ class TradeEngine:
 
         if abs(position.size - expected) > SIZE_TOLERANCE:
             self.notifier.send(
-                f"WARNING {trade.epic} ({trade.short_id}): after closing {size} the broker "
-                f"reports {position.size} remaining, expected {expected}.",
+                self.t("action.size_mismatch", epic=trade.epic, id=trade.short_id,
+                       size=size, actual=position.size, expected=expected),
                 level="warn",
             )

@@ -34,6 +34,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", help="path to a YAML or JSON config file")
     parser.add_argument("--log-level", default=None, help="DEBUG, INFO, WARNING, ...")
     parser.add_argument(
+        "--lang", choices=("en", "ar"),
+        help="display language for alerts and reports (default: from config)",
+    )
+    parser.add_argument(
         "--dry-run", action="store_true",
         help="evaluate and log every decision but send no order modifications",
     )
@@ -86,6 +90,8 @@ def _load_config(args: argparse.Namespace) -> Config:
         config.dry_run = True
     if args.log_level:
         config.log_level = args.log_level
+    if args.lang:
+        config.language = args.lang
     config.validate()
     return config
 
@@ -170,6 +176,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             print()
             print(f"daily report  {config.report.daily_time} {config.report.timezone}, "
                   f"refreshed every {config.report.intraday_refresh_hours:.0f}h")
+            print(f"language      {config.language} "
+                  f"({'right-to-left' if config.language == 'ar' else 'left-to-right'})")
             print(f"telegram      {'on' if config.telegram.enabled else 'off'}")
             print(f"news          {config.news.provider}")
             print(f"claude        {'on' if config.llm.enabled else 'off'} "

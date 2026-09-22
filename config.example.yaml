@@ -3,6 +3,12 @@
 database: tmbot.sqlite3
 log_level: INFO
 
+# Display language: en or ar. Alerts, commands and reports are translated;
+# stored records and log lines stay English so they remain portable and
+# searchable. Switch at any time with /lang ar or /lang en -- it re-renders
+# text only and never touches an open trade or a database row.
+language: en
+
 broker:
   # environment is set from the command line (--env demo|live) and has no
   # default on purpose.

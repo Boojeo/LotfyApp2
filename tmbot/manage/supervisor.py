@@ -21,6 +21,7 @@ from ..analysis.report import ReportBuilder, render_markdown, render_text
 from ..broker.base import BrokerAdapter, PartialCloseStrategy
 from ..config import Config
 from ..errors import AuthError, RetryableError, StaleDataError
+from ..i18n import LANGUAGES, Translator
 from ..models import (
     Bias,
     BrokerPosition,
@@ -42,6 +43,7 @@ from .rules import Decision, DecisionKind, Evaluation, evaluate
 log = logging.getLogger(__name__)
 
 PAUSED_KEY = "paused"
+LANGUAGE_KEY = "language"
 LAST_REPORT_KEY = "last_daily_report"
 LAST_REFRESH_KEY = "last_intraday_refresh"
 
@@ -61,16 +63,22 @@ class Supervisor:
     reporter: Optional[ReportBuilder] = None
     engine: Optional[TradeEngine] = None
 
+    t: Translator = field(default=None, init=False)
     _stop: threading.Event = field(default_factory=threading.Event, init=False)
     _candles: Dict[str, _CachedCandles] = field(default_factory=dict, init=False)
     _quotes: Dict[str, Quote] = field(default_factory=dict, init=False)
     _degraded: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
+        # A language chosen with /lang outlives a restart; config is the default.
+        stored = self.store.get(LANGUAGE_KEY)
+        self.t = Translator(stored if stored in LANGUAGES else self.config.language)
         if self.reporter is None:
             self.reporter = ReportBuilder(self.broker, self.config)
         if self.engine is None:
-            self.engine = TradeEngine(self.broker, self.store, self.config, self.notifier)
+            self.engine = TradeEngine(
+                self.broker, self.store, self.config, self.notifier, self.t
+            )
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -81,31 +89,25 @@ class Supervisor:
         log.info("\n%s", probe.render())
         if probe.blocking and self.config.management.ladder:
             self.notifier.send(
-                "Partial closes are NOT available on this account:\n"
-                + probe.render()
-                + "\nTP1/TP2 partials will be skipped; break-even and trailing still apply.",
+                self.t("startup.partials_unavailable", detail=probe.render()),
                 level="warn",
             )
         if self.config.management.exit_model == "three_deals" and probe.hedging_mode is False:
-            self.notifier.send(
-                "Exit model is THREE_DEALS but this account has hedging OFF, so "
-                "Capital.com will merge your three deals into one position and the "
-                "legs cannot be closed separately.\nTurn hedging on in the "
-                "Capital.com platform, or switch management.exit_model back to "
-                "partial_close.",
-                level="error",
-            )
+            self.notifier.send(self.t("startup.hedging_off"), level="error")
         self._reconcile_pending_actions()
         self._register_commands()
+        self.notifier.set_translator(self.t)
         self.notifier.start()
         account = self.broker.account_summary()
+        epics = self.t.join(item.epic for item in self.config.analysis.watchlist) or "-"
         self.notifier.send(
-            f"Trade manager online ({self.config.broker.environment}"
-            + (", DRY RUN" if self.config.dry_run else "")
-            + f") on account {account.get('accountId', '?')}.\n"
-            f"Watching: {', '.join(item.epic for item in self.config.analysis.watchlist) or '-'}\n"
-            f"Exit model: {self.config.management.exit_model}"
-            + (f"  (partial close: {probe.strategy.value})" if partials_needed else "")
+            self.t("startup.online",
+                   environment=self.config.broker.environment,
+                   dry_run=self.t("startup.dry_run") if self.config.dry_run else "",
+                   account=account.get("accountId", "?"))
+            + "\n" + self.t("startup.watching", epics=epics)
+            + "\n" + self.t("startup.exit_model", model=self.config.management.exit_model)
+            + (f"  ({probe.strategy.value})" if partials_needed else "")
         )
 
     def stop(self) -> None:
@@ -154,9 +156,10 @@ class Supervisor:
             except Exception as exc:
                 log.exception("could not build a plan for %s", position.epic)
                 self.notifier.send(
-                    f"New {position.direction.value} {position.size} {position.epic} "
-                    f"@ {position.entry_price} detected, but no plan could be built "
-                    f"({exc}). It is NOT being managed.",
+                    self.t("adoption.no_plan",
+                           direction=self.t.direction_name(position.direction),
+                           size=position.size, epic=position.epic,
+                           price=position.entry_price, error=exc),
                     level="error",
                 )
                 continue
@@ -186,10 +189,10 @@ class Supervisor:
                 self.store.save_trade(trade)
                 applied = self._apply_initial_protection(trade)
                 self.notifier.send(
-                    f"{trade.epic}: leg {leg_index + 1} joined the confirmed group "
-                    f"({trade.initial_size} @ {trade.entry_price}), exits at "
-                    f"{leg_target.value if leg_target else 'TP3'}.\n"
-                    + "\n".join(applied)
+                    self.t("adoption.late_leg", epic=trade.epic, index=leg_index + 1,
+                           size=trade.initial_size, price=trade.entry_price,
+                           target=leg_target.value if leg_target else "TP3")
+                    + "\n" + "\n".join(applied)
                 )
                 continue
 
@@ -248,38 +251,45 @@ class Supervisor:
         )
 
     def _adoption_message(self, trade: ManagedTrade, plan: TradePlan) -> str:
-        agrees = plan.direction is trade.direction
-        missing = ""
-        if self.config.management.exit_model == "three_deals":
+        management = self.config.management
+        parts = [
+            self.t("adoption.detected", epic=trade.epic,
+                   direction=self.t.direction_name(trade.direction),
+                   size=trade.initial_size, price=trade.entry_price),
+            self.t("adoption.plan", plan_id=plan.plan_id,
+                   bias=self.t.bias_name(plan.bias))
+            + ("" if plan.direction is trade.direction else self.t("adoption.against_bias")),
+            self.t("adoption.levels", sl=trade.sl, tp1=trade.tp1,
+                   tp2=trade.tp2, tp3=trade.tp3),
+        ]
+
+        rules = self.t("adoption.plan_rules",
+                       breakeven=management.breakeven_stage,
+                       trail=management.trail_after_stage)
+
+        if management.exit_model == "three_deals":
             target = trade.leg_target.value if trade.leg_target else "TP3"
-            legs = len(self.config.management.leg_targets)
-            ladder = (
-                f"leg {trade.leg_index + 1} of {legs} -- this deal closes in full at {target}"
+            legs = len(management.leg_targets)
+            parts.append(
+                self.t("adoption.plan_leg", index=trade.leg_index + 1,
+                       total=legs, target=target) + self.t.semicolon + rules
             )
             outstanding = legs - len(self.store.trades_in_group(trade.group_id))
             if outstanding > 0:
-                missing = (
-                    f"\nWAITING on {outstanding} more deal(s) to complete the basket. "
-                    f"Open them within {self.config.management.group_window_minutes:.0f} "
-                    f"minutes, or this deal closes at {target} on its own."
-                )
+                parts.append(self.t("adoption.waiting_legs", count=outstanding,
+                                    minutes=f"{management.group_window_minutes:.0f}",
+                                    target=target))
         else:
-            ladder = ", ".join(
-                f"{step.stage} {step.fraction:.0%}" for step in self.config.management.ladder
-            ) or "none"
-        return (
-            f"New position detected: {trade.epic} {trade.direction.value} "
-            f"{trade.initial_size} @ {trade.entry_price}\n"
-            f"Plan {plan.plan_id} -- bias {plan.bias.value}"
-            + ("" if agrees else "  (NOTE: your entry is against the plan's bias)")
-            + f"\nSL {trade.sl}   TP1 {trade.tp1}   TP2 {trade.tp2}   TP3 {trade.tp3}\n"
-            f"Ladder: {ladder}; break-even at "
-            f"{self.config.management.breakeven_stage}; "
-            f"trail after {self.config.management.trail_after_stage}"
-            + missing
-            + f"\n\n/confirm {trade.short_id} to manage it, "
-              f"/decline {trade.short_id} to leave it alone."
-        )
+            steps = self.t.join(
+                f"{step.stage} {step.fraction:.0%}" for step in management.ladder
+            ) or "-"
+            parts.append(
+                self.t("adoption.plan_ladder", steps=steps) + self.t.semicolon + rules
+            )
+
+        parts.append("")
+        parts.append(self.t("adoption.confirm_hint", id=trade.short_id))
+        return "\n".join(parts)
 
     def _plan_for(
         self,
@@ -310,9 +320,10 @@ class Supervisor:
     def confirm(self, short_id: str) -> str:
         trade = self.store.trade_by_short_id(short_id)
         if trade is None:
-            return f"No trade matching {short_id!r}."
+            return self.t("adoption.not_found", id=short_id)
         if trade.status is not TradeStatus.PENDING_CONFIRMATION:
-            return f"{trade.epic} ({trade.short_id}) is already {trade.status.value}."
+            return self.t("adoption.already", epic=trade.epic, id=trade.short_id,
+                          status=trade.status.value)
         # One reply adopts every leg of the basket -- asking three times for
         # three deals opened as one trade is friction, not safety.
         legs = [
@@ -330,12 +341,14 @@ class Supervisor:
             )
             applied = self._apply_initial_protection(leg)
             label = (
-                f"leg {leg.leg_index + 1} -> {leg.leg_target.value}"
-                if leg.leg_target else "position"
+                self.t("adoption.label_leg", index=leg.leg_index + 1,
+                       target=leg.leg_target.value)
+                if leg.leg_target else self.t("adoption.label_position")
             )
             lines.append(
-                f"Managing {leg.epic} {leg.direction.value} {leg.remaining_size} "
-                f"@ {leg.entry_price} ({label})."
+                self.t("adoption.managing", epic=leg.epic,
+                       direction=self.t.direction_name(leg.direction),
+                       size=leg.remaining_size, price=leg.entry_price, label=label)
             )
             lines.extend(f"  {line}" for line in applied)
         return "\n".join(lines)
@@ -343,11 +356,11 @@ class Supervisor:
     def decline(self, short_id: str) -> str:
         trade = self.store.trade_by_short_id(short_id)
         if trade is None:
-            return f"No trade matching {short_id!r}."
+            return self.t("adoption.not_found", id=short_id)
         trade.status = TradeStatus.DECLINED
         self.store.save_trade(trade)
         self.store.log_event("declined", "declined by user", deal_id=trade.deal_id, epic=trade.epic)
-        return f"Leaving {trade.epic} ({trade.short_id}) unmanaged."
+        return self.t("adoption.declined", epic=trade.epic, id=trade.short_id)
 
     def _apply_initial_protection(self, trade: ManagedTrade) -> List[str]:
         """Put the plan's stop and final target on the position we just adopted."""
@@ -358,6 +371,8 @@ class Supervisor:
                 deal_id=trade.deal_id,
                 key=f"{trade.deal_id}:initial_stop",
                 reason=f"initial protective stop from plan {trade.plan_id}",
+                reason_key="reason.initial_stop",
+                reason_args={"plan_id": trade.plan_id},
                 stop_level=trade.sl,
             ))
         decisions.append(Decision(
@@ -365,6 +380,8 @@ class Supervisor:
             deal_id=trade.deal_id,
             key=f"{trade.deal_id}:initial_target",
             reason=f"final target from plan {trade.plan_id}",
+            reason_key="reason.initial_target",
+            reason_args={"plan_id": trade.plan_id},
             profit_level=trade.tp3,
         ))
         return self.engine.apply(trade, Evaluation(decisions=decisions, blocked=[]))
@@ -381,9 +398,8 @@ class Supervisor:
             trade.note = "auto-declined: confirmation timed out"
             self.store.save_trade(trade)
             self.notifier.send(
-                f"{trade.epic} ({trade.short_id}) was not confirmed within "
-                f"{management.adoption_confirm_timeout_minutes:.0f} minutes -- "
-                "leaving it unmanaged. Use /manage to take it over later.",
+                self.t("adoption.timeout", epic=trade.epic, id=trade.short_id,
+                       minutes=f"{management.adoption_confirm_timeout_minutes:.0f}"),
                 level="warn",
             )
 
@@ -397,11 +413,14 @@ class Supervisor:
                     trade = ManagedTrade.from_position(position, plan)
                     break
         if trade is None:
-            return f"No position matching {short_id!r}."
+            return self.t("adoption.not_found", id=short_id)
         trade.status = TradeStatus.MANAGING
         self.store.save_trade(trade)
         applied = self._apply_initial_protection(trade)
-        return f"Managing {trade.epic} ({trade.short_id}).\n" + "\n".join(applied)
+        return self.t("adoption.managing", epic=trade.epic,
+                      direction=self.t.direction_name(trade.direction),
+                      size=trade.remaining_size, price=trade.entry_price,
+                      label=self.t("adoption.label_position")) + "\n" + "\n".join(applied)
 
     # ------------------------------------------------------------------ management
 
@@ -449,8 +468,9 @@ class Supervisor:
             self.store.save_trade(trade)
             if applied:
                 self.notifier.send(
-                    f"{trade.epic} ({trade.short_id}) @ {price} | "
-                    f"{trade.r_multiple(price):+.2f}R\n" + "\n".join(f"- {line}" for line in applied)
+                    self.t("action.header", epic=trade.epic, id=trade.short_id,
+                           price=price, r=f"{trade.r_multiple(price):+.2f}")
+                    + "\n" + "\n".join(f"- {line}" for line in applied)
                 )
             if trade.status is TradeStatus.CLOSED:
                 self._finalise(trade, notify=False)
@@ -475,10 +495,14 @@ class Supervisor:
         self.store.log_event("closed", trade.note or "position no longer open",
                              deal_id=trade.deal_id, epic=trade.epic)
         if notify:
+            stage = (
+                "TP2" if trade.tp2_done
+                else "TP1" if trade.tp1_done
+                else self.t("action.stage_none")
+            )
             self.notifier.send(
-                f"{trade.epic} ({trade.short_id}) is closed at the broker. "
-                f"Ladder reached: "
-                f"{'TP2' if trade.tp2_done else 'TP1' if trade.tp1_done else 'none'}."
+                self.t("action.closed_at_broker", epic=trade.epic,
+                       id=trade.short_id, stage=stage)
             )
 
     # ------------------------------------------------------------------ snapshots
@@ -539,9 +563,7 @@ class Supervisor:
             self._degraded = True
             self.store.log_event("degraded", reason)
             self.notifier.send(
-                f"Lost contact with {self.broker.name}: {reason}\n"
-                "Holding all state; no decisions will be taken until the connection "
-                "recovers. Positions already carry their broker-side stop.",
+                self.t("degraded.lost", broker=self.broker.name, reason=reason),
                 level="error",
             )
         else:
@@ -550,7 +572,7 @@ class Supervisor:
     def _leave_degraded(self) -> None:
         self._degraded = False
         self.store.log_event("recovered", "broker reachable again")
-        self.notifier.send("Connection to the broker recovered; management resumed.")
+        self.notifier.send(self.t("degraded.recovered"))
 
     def _reconcile_pending_actions(self) -> None:
         """Resolve anything that was in flight when the process last stopped."""
@@ -613,10 +635,12 @@ class Supervisor:
                 plan = self._plan_for(item.epic, force=True)
             except Exception as exc:
                 log.exception("daily report failed for %s", item.epic)
-                self.notifier.send(f"Report for {item.epic} failed: {exc}", level="error")
+                self.notifier.send(
+                    self.t("report.failed", epic=item.epic, error=exc), level="error"
+                )
                 continue
             self._write_report_file(plan)
-            self.notifier.send(render_text(plan))
+            self.notifier.send(render_text(plan, self.t))
 
     def _write_report_file(self, plan: TradePlan) -> None:
         from pathlib import Path
@@ -624,7 +648,7 @@ class Supervisor:
         try:
             directory.mkdir(parents=True, exist_ok=True)
             path = directory / f"{plan.epic}-{plan.created_at:%Y%m%d-%H%M}.md"
-            path.write_text(render_markdown(plan), encoding="utf-8")
+            path.write_text(render_markdown(plan, self.t), encoding="utf-8")
             log.info("wrote %s", path)
         except OSError as exc:
             log.warning("could not write report file: %s", exc)
@@ -657,18 +681,19 @@ class Supervisor:
                 continue
             messages: List[str] = []
             if self.config.report.notify_on_bias_flip and plan.bias is not previous.bias:
-                messages.append(
-                    f"bias {previous.bias.value} -> {plan.bias.value} "
-                    f"(confidence {plan.confidence:.0f})"
-                )
+                messages.append(self.t(
+                    "report.update_bias",
+                    old=self.t.bias_name(previous.bias), new=self.t.bias_name(plan.bias),
+                    confidence=f"{plan.confidence:.0f}",
+                ))
             if self.config.report.notify_on_level_invalidated:
                 messages.extend(self._invalidated_levels(previous, plan))
             if messages:
                 self.notifier.send(
-                    f"{item.epic} plan update:\n"
-                    + "\n".join(f"- {line}" for line in messages)
-                    + f"\nNew levels: SL {plan.sl} | TP1 {plan.tp1} "
-                      f"TP2 {plan.tp2} TP3 {plan.tp3}",
+                    self.t("report.update_heading", epic=item.epic) + "\n"
+                    + "\n".join(f"- {line}" for line in messages) + "\n"
+                    + self.t("report.update_levels", sl=plan.sl, tp1=plan.tp1,
+                             tp2=plan.tp2, tp3=plan.tp3),
                     level="warn",
                 )
 
@@ -700,97 +725,109 @@ class Supervisor:
         self.notifier.register("plan", self.plan_command)
         self.notifier.register("close", self.close_command)
         self.notifier.register("be", self.breakeven_command)
+        self.notifier.register("lang", self.set_language)
         self.notifier.register("pause", lambda _: self.set_paused(True))
         self.notifier.register("resume", lambda _: self.set_paused(False))
 
     def help_text(self) -> str:
-        return (
-            "/status            open positions and ladder state\n"
-            "/confirm <id>      start managing a detected position\n"
-            "/decline <id>      leave a detected position alone\n"
-            "/manage <id>       take over a position declined earlier\n"
-            "/report [epic]     rebuild and send the full plan\n"
-            "/plan [epic]       show the stored plan levels\n"
-            "/close <id>        close the remaining size now\n"
-            "/be <id>           move the stop to entry now\n"
-            "/pause /resume     stop or restart all order modifications"
-        )
+        return self.t("command.help")
 
     def set_paused(self, paused: bool) -> str:
         self.store.set(PAUSED_KEY, "1" if paused else "0")
-        state = "PAUSED -- no stops or targets will be modified" if paused else "resumed"
-        self.store.log_event("paused" if paused else "resumed", state)
-        return f"Trade management {state}."
+        message = self.t("status.paused_now" if paused else "status.resumed_now")
+        self.store.log_event("paused" if paused else "resumed", message)
+        return message
+
+    def set_language(self, argument: str) -> str:
+        """Switch display language.
+
+        Only presentation changes -- stored trades, plans and enum values are
+        untouched, so this is safe to run with positions open.
+        """
+        choice = argument.strip().lower()
+        if choice not in LANGUAGES:
+            return self.t("command.language_usage", current=self.t.language)
+        self.t = self.t.with_language(choice)
+        self.engine.t = self.t
+        self.notifier.set_translator(self.t)
+        self.store.set(LANGUAGE_KEY, choice)
+        self.store.log_event("language", f"display language set to {choice}")
+        return self.t("command.language_set")
 
     def status_text(self) -> str:
         lines: List[str] = []
         if self.store.get(PAUSED_KEY) == "1":
-            lines.append("** management is PAUSED **")
+            lines.append(self.t("status.paused"))
         if self._degraded:
-            lines.append("** broker connection degraded **")
-        pending = self.store.pending_trades()
-        for trade in pending:
-            lines.append(
-                f"[awaiting confirmation] {trade.epic} {trade.direction.value} "
-                f"{trade.initial_size} @ {trade.entry_price} -> /confirm {trade.short_id}"
-            )
+            lines.append(self.t("status.degraded"))
+        for trade in self.store.pending_trades():
+            lines.append(self.t(
+                "status.awaiting", epic=trade.epic,
+                direction=self.t.direction_name(trade.direction),
+                size=trade.initial_size, price=trade.entry_price, id=trade.short_id,
+            ))
         for trade in self.store.active_trades():
             try:
                 price = self.broker.quote(trade.epic).exit_price(trade.direction)
                 marker = f"{price} ({trade.r_multiple(price):+.2f}R)"
             except Exception:
-                marker = "price unavailable"
+                marker = self.t("status.price_unavailable")
             if trade.leg_target is not None:
-                rungs = f"leg{trade.leg_index + 1}->{trade.leg_target.value}"
-                rungs += "B" if trade.breakeven_done else ""
-                rungs += "T" if trade.trailing_active else ""
+                flags = f"leg{trade.leg_index + 1}->{trade.leg_target.value}"
+                flags += "B" if trade.breakeven_done else ""
+                flags += "T" if trade.trailing_active else ""
             else:
-                rungs = "".join([
+                flags = "".join([
                     "1" if trade.tp1_done else "-",
                     "2" if trade.tp2_done else "-",
                     "B" if trade.breakeven_done else "-",
                     "T" if trade.trailing_active else "-",
                 ])
-            lines.append(
-                f"{trade.epic} {trade.direction.value} {trade.remaining_size}/"
-                f"{trade.initial_size} @ {trade.entry_price} | now {marker}\n"
-                f"   SL {trade.stop_level} TP1 {trade.tp1} TP2 {trade.tp2} TP3 {trade.tp3} "
-                f"[{rungs}] id {trade.short_id}"
-            )
-        return "\n".join(lines) if lines else "No positions are being managed."
+            lines.append(self.t(
+                "status.line", epic=trade.epic,
+                direction=self.t.direction_name(trade.direction),
+                remaining=trade.remaining_size, initial=trade.initial_size,
+                entry=trade.entry_price, marker=marker,
+            ))
+            lines.append(self.t(
+                "status.levels", sl=trade.stop_level, tp1=trade.tp1,
+                tp2=trade.tp2, tp3=trade.tp3, flags=flags, id=trade.short_id,
+            ))
+        return "\n".join(lines) if lines else self.t("status.empty")
 
     def report_command(self, argument: str) -> str:
         epics = [argument.strip().upper()] if argument.strip() else [
             item.epic for item in self.config.analysis.watchlist
         ]
         if not epics:
-            return "No epic given and the watchlist is empty."
+            return self.t("command.no_epic")
         replies: List[str] = []
         for epic in epics:
             try:
                 plan = self._plan_for(epic, force=True)
                 self._write_report_file(plan)
-                replies.append(render_text(plan))
+                replies.append(render_text(plan, self.t))
             except Exception as exc:
-                replies.append(f"{epic}: report failed -- {exc}")
+                replies.append(self.t("report.failed", epic=epic, error=exc))
         return "\n\n".join(replies)
 
     def plan_command(self, argument: str) -> str:
         epic = argument.strip().upper()
         if not epic:
-            return "Usage: /plan <epic>"
+            return self.t("command.plan_usage")
         plan = self.store.latest_plan(epic)
-        return render_text(plan) if plan else f"No stored plan for {epic}. Try /report {epic}."
+        return render_text(plan, self.t) if plan else self.t("report.no_plan", epic=epic)
 
     def close_command(self, argument: str) -> str:
         trade = self.store.trade_by_short_id(argument.strip())
         if trade is None:
-            return f"No trade matching {argument.strip()!r}."
+            return self.t("adoption.not_found", id=argument.strip())
         decision = Decision(
             kind=DecisionKind.CLOSE_ALL,
             deal_id=trade.deal_id,
             key=f"{trade.deal_id}:manual_close:{utcnow():%Y%m%d%H%M%S}",
             reason="manual close requested",
+            reason_key="reason.manual_close",
             size=trade.remaining_size,
         )
         applied = self.engine.apply(trade, Evaluation(decisions=[decision], blocked=[]))
@@ -800,12 +837,13 @@ class Supervisor:
     def breakeven_command(self, argument: str) -> str:
         trade = self.store.trade_by_short_id(argument.strip())
         if trade is None:
-            return f"No trade matching {argument.strip()!r}."
+            return self.t("adoption.not_found", id=argument.strip())
         decision = Decision(
             kind=DecisionKind.SET_STOP,
             deal_id=trade.deal_id,
             key=f"{trade.deal_id}:manual_be:{utcnow():%Y%m%d%H%M%S}",
             reason="manual break-even requested",
+            reason_key="reason.manual_breakeven",
             stop_level=trade.entry_price,
         )
         applied = self.engine.apply(trade, Evaluation(decisions=[decision], blocked=[]))

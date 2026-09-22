@@ -14,6 +14,7 @@ from typing import Dict, Optional
 import requests
 
 from ..config import TelegramConfig
+from ..i18n import Translator
 from ..store import Store
 from .base import CommandHandler, Notifier
 
@@ -34,6 +35,7 @@ class TelegramNotifier(Notifier):
         self._commands: Dict[str, CommandHandler] = {}
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
+        self.t = Translator()
 
     # ------------------------------------------------------------------ outbound
 
@@ -59,6 +61,9 @@ class TelegramNotifier(Notifier):
 
     def register(self, command: str, handler: CommandHandler) -> None:
         self._commands[command.lower()] = handler
+
+    def set_translator(self, t: Translator) -> None:
+        self.t = t
 
     def start(self) -> None:
         if self._thread is not None or not self._commands:
@@ -127,13 +132,13 @@ class TelegramNotifier(Notifier):
         command = command.split("@", 1)[0].lower()
         handler = self._commands.get(command)
         if handler is None:
-            self.send(f"Unknown command /{command}. Try /help.")
+            self.send(self.t("command.unknown", command=command))
             return
         try:
             reply = handler(argument.strip())
         except Exception as exc:
             log.exception("command /%s failed", command)
-            reply = f"/{command} failed: {exc}"
+            reply = self.t("command.failed", command=command, error=exc)
         if reply:
             self.send(reply)
 
