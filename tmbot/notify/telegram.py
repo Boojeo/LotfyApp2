@@ -57,6 +57,25 @@ class TelegramNotifier(Notifier):
             except requests.RequestException as exc:
                 log.warning("telegram unreachable: %s", exc)
 
+    def send_photo(self, path: str, caption: str = "", *, level: str = "info") -> None:
+        """Upload a chart.  Falls back to the caption alone if the upload fails."""
+        text = f"{self.PREFIX.get(level, '')}{caption}"[:1000]
+        try:
+            with open(path, "rb") as handle:
+                response = self._http.post(
+                    f"{self._base}/sendPhoto",
+                    data={"chat_id": self.config.chat_id, "caption": text},
+                    files={"photo": handle},
+                    timeout=self.config.timeout * 2,
+                )
+            if response.status_code < 400:
+                return
+            log.warning("telegram sendPhoto failed: %s", response.text[:200])
+        except (OSError, requests.RequestException) as exc:
+            log.warning("telegram sendPhoto error: %s", exc)
+        if caption:
+            self.send(caption, level=level)
+
     # ------------------------------------------------------------------ commands
 
     def register(self, command: str, handler: CommandHandler) -> None:

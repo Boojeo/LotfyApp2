@@ -45,6 +45,12 @@ log and the action journal.
   targets** (TP1/TP2/TP3) and **one stop**, every time — structural zones where
   they exist, ATR projections where they do not, with the method stated in the
   report.
+- An **annotated chart** with every report: candles in plain ink, each target
+  and the stop drawn and labelled with what it pays in R, liquidity zones
+  shaded, and the risk between entry and stop filled in. Colour is reserved for
+  decisions — the conventional take-profit green sits 4.1 ΔE from stop red under
+  deuteranopia, so the teal used instead scores 9.9, and every level carries a
+  text label and its own line style so nothing depends on colour alone.
 - Runs on a schedule for a watchlist, refreshes intraday, and tells you when
   the bias flips or a level is invalidated.
 
@@ -302,6 +308,7 @@ tmbot/
     capital.py         Capital.com REST: session, retry, re-auth, probe
     paper.py           In-memory netting broker for tests and offline runs
   analysis/
+    chart.py           Annotated plan charts, light/dark, Arabic-shaped
     indicators.py      EMA/SMA/RSI/ATR/ADX/MACD/swings, pure Python
     levels.py          Zone clustering -> TP1/TP2/TP3 + SL
     bias.py            Weighted technical read
@@ -314,7 +321,7 @@ tmbot/
     supervisor.py      Poll loop, adoption, schedules, commands
   notify/              Console, Telegram (with command polling), fan-out
   cli.py
-tests/                 121 tests, no network
+tests/                 130 tests, no network
 ```
 
 The split that matters: `manage/rules.py` is pure. It takes a trade and a market

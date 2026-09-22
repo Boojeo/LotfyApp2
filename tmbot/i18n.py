@@ -442,6 +442,21 @@ CATALOG: Dict[str, Dict[str, str]] = {
         ),
     },
 
+    # ---------------------------------------------------------------- chart
+    "chart.title": {
+        "en": "{epic} -- {bias} ({confidence}/100)",
+        "ar": "{epic} — {bias} {confidence}/100",
+    },
+    "chart.entry": {"en": "entry", "ar": "الدخول"},
+    "chart.atr": {"en": "ATR {value}", "ar": "المدى {value}"},
+    "chart.adx": {"en": "ADX {value} ({strength})", "ar": "ADX {value} {strength}"},
+    "chart.rsi": {"en": "RSI {value}", "ar": "RSI {value}"},
+    "chart.risk": {"en": "risk {value}", "ar": "المخاطرة {value}"},
+    "chart.unavailable": {
+        "en": "Chart could not be drawn ({error}); the text plan above still applies.",
+        "ar": "تعذّر رسم الشارت ({error})؛ الخطة النصية أعلاه سارية.",
+    },
+
     # ---------------------------------------------------------------- report
     "report.title": {
         "en": "{epic} -- daily plan {timestamp}",

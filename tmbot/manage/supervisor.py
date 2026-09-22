@@ -13,10 +13,12 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, time as time_of_day, timedelta, timezone
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from ..analysis.bias import trend_strength
 from ..analysis.indicators import adx, atr, ema, last_value, swing_points
+from ..analysis import chart as chart_module
 from ..analysis.report import ReportBuilder, render_markdown, render_text
 from ..broker.base import BrokerAdapter, PartialCloseStrategy
 from ..config import Config
@@ -639,11 +641,42 @@ class Supervisor:
                     self.t("report.failed", epic=item.epic, error=exc), level="error"
                 )
                 continue
-            self._write_report_file(plan)
-            self.notifier.send(render_text(plan, self.t))
+            self._publish_plan(plan)
+
+    def _publish_plan(self, plan: TradePlan, *, notify: bool = True) -> str:
+        """Write the markdown, draw the chart, and push both out."""
+        self._write_report_file(plan)
+        caption = render_text(plan, self.t)
+        if not notify:
+            return caption
+        path = self._render_chart(plan)
+        if path:
+            self.notifier.send_photo(str(path), caption)
+        else:
+            self.notifier.send(caption)
+        return caption
+
+    def _render_chart(self, plan: TradePlan) -> Optional[Path]:
+        """Draw the plan.  A failed chart must never cost you the text plan."""
+        report = self.config.report
+        if not report.charts:
+            return None
+        try:
+            candles = self._cached_candles(
+                plan.epic, report.chart_timeframe, max(report.chart_bars * 2, 200)
+            )
+            directory = Path(report.output_dir)
+            path = directory / f"{plan.epic}-{plan.created_at:%Y%m%d-%H%M}.png"
+            return chart_module.render(
+                plan, candles, path, t=self.t,
+                theme=report.chart_theme, bars=report.chart_bars,
+            )
+        except Exception as exc:
+            log.warning("%s: chart could not be drawn (%s)", plan.epic, exc)
+            self.notifier.send(self.t("chart.unavailable", error=exc), level="warn")
+            return None
 
     def _write_report_file(self, plan: TradePlan) -> None:
-        from pathlib import Path
         directory = Path(self.config.report.output_dir)
         try:
             directory.mkdir(parents=True, exist_ok=True)
@@ -805,8 +838,7 @@ class Supervisor:
         for epic in epics:
             try:
                 plan = self._plan_for(epic, force=True)
-                self._write_report_file(plan)
-                replies.append(render_text(plan, self.t))
+                replies.append(self._publish_plan(plan))
             except Exception as exc:
                 replies.append(self.t("report.failed", epic=epic, error=exc))
         return "\n\n".join(replies)

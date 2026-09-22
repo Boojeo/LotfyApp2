@@ -119,3 +119,11 @@ report:
   notify_on_bias_flip: true
   notify_on_level_invalidated: true
   output_dir: reports
+
+  # Annotated chart images sent with every report. Candles are drawn in plain
+  # ink so the only colour on the chart belongs to a decision: targets, the
+  # stop, and the risk band between your entry and it.
+  charts: true
+  chart_theme: dark          # light | dark
+  chart_timeframe: H1
+  chart_bars: 120

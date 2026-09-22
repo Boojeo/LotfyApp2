@@ -2,6 +2,12 @@
 requests>=2.31
 PyYAML>=6.0
 
+# Chart images for reports. Without these the bot still sends the full text
+# plan; it just cannot draw it.
+matplotlib>=3.8
+arabic-reshaper>=3.0     # joins Arabic letters -- matplotlib does not
+python-bidi>=0.4         # reorders mixed Arabic/number labels
+
 # Optional: the fundamental/news synthesis. Without it the bot falls back to a
 # deterministic keyword read and still produces a full daily report.
 anthropic>=1.0

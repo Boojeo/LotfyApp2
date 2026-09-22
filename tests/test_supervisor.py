@@ -28,7 +28,8 @@ def build_supervisor(**management_overrides):
     config.management = management(**management_overrides)
     config.llm.enabled = False
     config.news.provider = "none"
-    config.report.intraday_refresh_hours = 0  # keep the scheduler out of these tests
+    config.report.intraday_refresh_hours = 0
+    config.report.charts = False   # drawn in test_chart.py, not on every tick  # keep the scheduler out of these tests
 
     store = Store(":memory:")
     notifier = NullNotifier()

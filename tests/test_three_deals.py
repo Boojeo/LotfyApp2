@@ -106,6 +106,7 @@ def build_supervisor(**management_overrides):
     config.management = legs(**management_overrides)
     config.llm.enabled = False
     config.report.intraday_refresh_hours = 0
+    config.report.charts = False   # drawn in test_chart.py, not on every tick
 
     store = Store(":memory:")
     notifier = NullNotifier()

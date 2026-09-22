@@ -152,6 +152,10 @@ class ReportConfig:
     notify_on_bias_flip: bool = True
     notify_on_level_invalidated: bool = True
     output_dir: str = "reports"
+    charts: bool = True
+    chart_theme: str = "dark"        # light | dark
+    chart_timeframe: str = "H1"
+    chart_bars: int = 120
 
 
 @dataclass
@@ -210,6 +214,8 @@ class Config:
                 )
         if self.telegram.enabled and not (self.telegram.bot_token and self.telegram.chat_id):
             raise ConfigError("telegram.enabled is true but bot_token/chat_id are not set")
+        if self.report.chart_theme not in ("light", "dark"):
+            raise ConfigError("report.chart_theme must be 'light' or 'dark'")
         if self.language not in LANGUAGES:
             raise ConfigError(
                 f"language must be one of {', '.join(LANGUAGES)}, got {self.language!r}"

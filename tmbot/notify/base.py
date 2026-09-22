@@ -22,6 +22,11 @@ class Notifier(ABC):
     def register(self, command: str, handler: CommandHandler) -> None:
         """Wire up a chat command.  No-op for notifiers without an input side."""
 
+    def send_photo(self, path: str, caption: str = "", *, level: str = "info") -> None:
+        """Send an image.  Transports without one fall back to the caption."""
+        if caption:
+            self.send(caption, level=level)
+
     def set_translator(self, t: Translator) -> None:
         """Adopt the active display language.  Called again after /lang."""
 
@@ -38,13 +43,23 @@ class ConsoleNotifier(Notifier):
     def send(self, message: str, *, level: str = "info") -> None:
         log.log(self.LEVELS.get(level, logging.INFO), "%s", message)
 
+    def send_photo(self, path: str, caption: str = "", *, level: str = "info") -> None:
+        self.send(f"{caption}\n[chart: {path}]" if caption else f"[chart: {path}]",
+                  level=level)
+
 
 class NullNotifier(Notifier):
     def __init__(self) -> None:
         self.messages: List[tuple[str, str]] = []
+        self.photos: List[tuple[str, str]] = []
 
     def send(self, message: str, *, level: str = "info") -> None:
         self.messages.append((level, message))
+
+    def send_photo(self, path: str, caption: str = "", *, level: str = "info") -> None:
+        self.photos.append((path, caption))
+        if caption:
+            self.send(caption, level=level)
 
 
 class MultiNotifier(Notifier):
@@ -65,6 +80,14 @@ class MultiNotifier(Notifier):
         self._commands[command] = handler
         for notifier in self.notifiers:
             notifier.register(command, handler)
+
+    def send_photo(self, path: str, caption: str = "", *, level: str = "info") -> None:
+        for notifier in self.notifiers:
+            try:
+                notifier.send_photo(path, caption, level=level)
+            except Exception:
+                log.exception("notifier %s failed to send a photo",
+                              type(notifier).__name__)
 
     def set_translator(self, t: Translator) -> None:
         for notifier in self.notifiers:
