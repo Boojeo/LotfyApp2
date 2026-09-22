@@ -12,7 +12,7 @@ from . import config as config_module
 from .analysis.report import ReportBuilder, render_markdown, render_text
 from .broker.capital import CapitalComBroker
 from .config import Config
-from .errors import TmbotError
+from .errors import AuthError, PermanentError, TmbotError
 from .manage.supervisor import Supervisor
 from .notify.base import ConsoleNotifier, MultiNotifier, Notifier
 from .store import Store
@@ -72,6 +72,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("status", help="show managed positions and ladder state")
     sub.add_parser("positions", help="list raw open positions at the broker")
     sub.add_parser(
+        "doctor",
+        help="work out which account a key belongs to and why a login is refused",
+    )
+    sub.add_parser(
         "envs",
         help="show which environments are configured and where each stores data",
     )
@@ -96,7 +100,7 @@ def _configure_logging(level: str) -> None:
 def _load_config(args: argparse.Namespace) -> Config:
     # These only read settings back, so they must work even when something is
     # missing -- that is exactly when you need to look.
-    inspecting = args.command in ("envs", "check")
+    inspecting = args.command in ("envs", "check", "doctor")
     config = config_module.load(args.config)
     config.broker.environment = args.env
     config_module.resolve_environment_secrets(config)
@@ -147,6 +151,74 @@ def main(argv: Optional[List[str]] = None) -> int:
             signal.signal(signal.SIGTERM, handle_signal)
             supervisor.run()
             return 0
+
+        if args.command == "doctor":
+            import copy
+
+            account = config.broker.active
+            chosen = config.broker.environment
+            print(f"Testing the {chosen} credentials against BOTH Capital.com hosts.")
+            print(f"  identifier  {account.identifier}")
+            print(f"  api key     ...{account.api_key[-4:] if account.api_key else '(not set)'}")
+            print()
+            if not account.configured:
+                print(f"Nothing to test: the {chosen} credentials are incomplete.")
+                return 1
+
+            results = {}
+            for host in ("demo", "live"):
+                probe = copy.deepcopy(config.broker)
+                probe.environment = host
+                probe.demo = probe.live = account
+                probe.retry_attempts = 1
+                tester = CapitalComBroker(probe)
+                try:
+                    tester.connect()
+                    summary = tester.account_summary()
+                    results[host] = ("ok", str(summary.get("accountId", "?")))
+                    print(f"  {host:<5} LOGGED IN   account {results[host][1]}")
+                except (AuthError, PermanentError) as exc:
+                    # Capital.com answered and said no -- the useful case.
+                    detail = str(exc).split(" -> ")[-1].strip() or type(exc).__name__
+                    results[host] = ("rejected", detail)
+                    print(f"  {host:<5} refused     {detail}")
+                except Exception as exc:
+                    # Never reached the server, so this says nothing about the key.
+                    detail = type(exc).__name__
+                    results[host] = ("unreachable", detail)
+                    print(f"  {host:<5} unreachable (no answer -- check your internet)")
+                finally:
+                    try:
+                        tester.close()
+                    except Exception:
+                        pass
+
+            demo_ok = results["demo"][0] == "ok"
+            live_ok = results["live"][0] == "ok"
+            print()
+            if results[chosen][0] == "ok":
+                print(f"These credentials work on {chosen}. Nothing to fix.")
+                return 0
+            if "unreachable" in (results["demo"][0], results["live"][0]):
+                print("Capital.com could not be reached, so this test proves nothing")
+                print("about your key. Check your internet and run it again.")
+                return 1
+            if chosen == "live" and demo_ok:
+                print("This is a DEMO key. It was generated while the platform was")
+                print("showing the demo account. Switch the account selector to Live")
+                print("in Capital.com, generate a new key there, and use that one.")
+            else:
+                blame = results["live"][1].lower()
+                if "accountid" in blame:
+                    print("The key is accepted but no account sits behind it on either")
+                    print("host. That normally means the live account is not open for")
+                    print("business yet: identity check incomplete, or never funded.")
+                    print("Check that you can place a trade manually in the app first.")
+                else:
+                    print("Neither host accepted these. The key or its password is")
+                    print("wrong -- note that the password is the custom one you set")
+                    print("when creating the key, not your login password.")
+            return 1
 
         if args.command == "envs":
             settings = config.broker

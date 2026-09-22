@@ -116,7 +116,8 @@ separate API keys for each, so `.env` holds `CAPITAL_DEMO_*` and
 `CAPITAL_LIVE_*` (a single `CAPITAL_*` set still works and is used for both).
 
 ```bash
-python -m tmbot --env demo --config config.yaml envs   # what is configured, and where it stores data
+python -m tmbot --env demo --config config.yaml envs     # what is configured, and where it stores data
+python -m tmbot --env live --config config.yaml doctor  # why a login is being refused
 python -m tmbot --env demo --config config.yaml run
 python -m tmbot --env live --config config.yaml run
 ```
@@ -132,6 +133,13 @@ Both can run at the same time, in separate windows. If you do, give each its own
 Telegram bot (`TELEGRAM_DEMO_BOT_TOKEN` / `TELEGRAM_LIVE_BOT_TOKEN`) — two
 pollers on one token steal each other's updates, and commands would land in
 whichever process grabbed them first.
+
+`doctor` tries the selected environment's credentials against **both**
+Capital.com hosts and says what follows: a key that works on demo but not live
+was generated with the account selector on the wrong setting; one refused by
+both with `error.null.accountId` means the account has no tradeable ID behind
+it, usually an unfinished identity check or an unfunded account; and a host
+that never answers is reported as unreachable rather than blamed on the key.
 
 **Live takes two deliberate acts**: `broker.live_enabled: true` in the config
 file *and* `--env live` on the command line. Either alone is refused, so no
