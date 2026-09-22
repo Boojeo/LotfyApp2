@@ -1,6 +1,9 @@
 # Core runtime
 requests>=2.31
 PyYAML>=6.0
+# Windows has no system timezone database, so report.timezone would silently
+# fall back to UTC without this. A no-op where the OS already provides one.
+tzdata>=2024.1; sys_platform == "win32"
 
 # Chart images for reports. Without these the bot still sends the full text
 # plan; it just cannot draw it.

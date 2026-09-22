@@ -138,6 +138,47 @@ class LiveGateTests(unittest.TestCase):
         config.validate(connecting=False)
 
 
+class TimezoneTests(unittest.TestCase):
+    """A wrong report hour looks exactly like a working bot, so it must fail loudly."""
+
+    def test_utc_always_resolves(self):
+        from tmbot.config import resolve_timezone
+        from datetime import timezone
+        self.assertIs(resolve_timezone("UTC"), timezone.utc)
+
+    def test_a_real_zone_resolves(self):
+        from tmbot.config import resolve_timezone
+        self.assertIsNotNone(resolve_timezone("Asia/Riyadh"))
+
+    def test_an_unknown_zone_names_the_windows_fix(self):
+        from tmbot.config import resolve_timezone
+        with self.assertRaises(ConfigError) as caught:
+            resolve_timezone("Not/AZone")
+        self.assertIn("tzdata", str(caught.exception))
+
+    def test_check_catches_it_before_the_bot_runs(self):
+        config = ready(Config())
+        config.broker.environment = "demo"
+        config.report.timezone = "Nowhere/Fictional"
+        with self.assertRaises(ConfigError):
+            config.validate(connecting=False)
+
+    def test_a_malformed_daily_time_is_rejected(self):
+        config = ready(Config())
+        config.broker.environment = "demo"
+        config.report.daily_time = "7am"
+        with self.assertRaises(ConfigError) as caught:
+            config.validate()
+        self.assertIn("HH:MM", str(caught.exception))
+
+    def test_an_out_of_range_hour_is_rejected(self):
+        config = ready(Config())
+        config.broker.environment = "demo"
+        config.report.daily_time = "25:00"
+        with self.assertRaises(ConfigError):
+            config.validate()
+
+
 class TaggingTests(unittest.TestCase):
     def test_alerts_carry_the_environment(self):
         from tmbot.notify.base import NullNotifier

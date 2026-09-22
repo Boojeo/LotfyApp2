@@ -309,6 +309,17 @@ class Config:
                 "reversal.action must be 'tighten', 'close' or 'alert' -- the bot "
                 "never opens a position to recover"
             )
+        # Resolved here so a bad or unavailable timezone is reported by
+        # `check`, not discovered when a report arrives at the wrong hour.
+        resolve_timezone(self.report.timezone)
+        try:
+            hour, minute = (int(part) for part in self.report.daily_time.split(":"))
+            if not (0 <= hour < 24 and 0 <= minute < 60):
+                raise ValueError
+        except ValueError:
+            raise ConfigError(
+                f"report.daily_time must be HH:MM, got {self.report.daily_time!r}"
+            ) from None
         if self.report.chart_theme not in ("light", "dark"):
             raise ConfigError("report.chart_theme must be 'light' or 'dark'")
         if self.language not in LANGUAGES:
@@ -317,6 +328,33 @@ class Config:
             )
         if self.management.on_indivisible_size not in ("hold", "close_all"):
             raise ConfigError("management.on_indivisible_size must be 'hold' or 'close_all'")
+
+
+def resolve_timezone(name: str):
+    """Turn a timezone name into a tzinfo, or say precisely why it cannot.
+
+    Windows ships no timezone database, so ``ZoneInfo("Asia/Riyadh")`` fails
+    there unless the ``tzdata`` package is installed. Falling back to UTC with
+    only a log line would send the daily report at the wrong hour every day and
+    look like it was working.
+    """
+    from datetime import timezone as _timezone
+    if name.upper() == "UTC":
+        return _timezone.utc
+    try:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    except ImportError as exc:  # pragma: no cover - Python < 3.9
+        raise ConfigError(f"timezone support unavailable: {exc}") from exc
+    try:
+        return ZoneInfo(name)
+    except ZoneInfoNotFoundError as exc:
+        raise ConfigError(
+            f"unknown timezone {name!r}. On Windows the timezone database is "
+            "not built in -- run: pip install tzdata  (it is in "
+            "requirements.txt). Otherwise check the spelling, e.g. Asia/Riyadh."
+        ) from exc
+    except (ValueError, OSError) as exc:
+        raise ConfigError(f"invalid timezone {name!r}: {exc}") from exc
 
 
 def _coerce(cls: Any, raw: Any) -> Any:

@@ -22,7 +22,7 @@ from ..analysis import chart as chart_module
 from ..analysis import journal as journal_module
 from ..analysis.report import ReportBuilder, render_markdown, render_text
 from ..broker.base import BrokerAdapter, PartialCloseStrategy
-from ..config import Config
+from ..config import Config, resolve_timezone
 from ..errors import AuthError, RetryableError, StaleDataError
 from ..i18n import LANGUAGES, Translator
 from ..models import (
@@ -713,16 +713,9 @@ class Supervisor:
         self._maybe_daily_report()
         self._maybe_intraday_refresh()
 
-    def _report_timezone(self) -> timezone:
-        name = self.config.report.timezone
-        if name.upper() == "UTC":
-            return timezone.utc
-        try:
-            from zoneinfo import ZoneInfo
-            return ZoneInfo(name)  # type: ignore[return-value]
-        except Exception:
-            log.warning("unknown timezone %r; falling back to UTC", name)
-            return timezone.utc
+    def _report_timezone(self):
+        # Validated at startup, so this cannot silently become UTC.
+        return resolve_timezone(self.config.report.timezone)
 
     def _maybe_daily_report(self) -> None:
         watchlist = self.config.analysis.watchlist

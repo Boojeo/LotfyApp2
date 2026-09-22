@@ -246,6 +246,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                   f"{management.management_timeframe} every "
                   f"{management.poll_seconds:.0f}s")
             print()
+            from datetime import datetime
+            from .config import resolve_timezone
+            zone = resolve_timezone(config.report.timezone)
+            local = datetime.now(zone)
+            print(f"time now      {local:%H:%M} {config.report.timezone} "
+                  f"({datetime.utcnow():%H:%M} UTC)")
             print(f"daily report  {config.report.daily_time} {config.report.timezone}, "
                   f"refreshed every {config.report.intraday_refresh_hours:.0f}h")
             print(f"language      {config.language} "
