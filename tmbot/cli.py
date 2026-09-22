@@ -158,17 +158,28 @@ def main(argv: Optional[List[str]] = None) -> int:
                     settings.api_key and settings.identifier and settings.password
                 )
                 ready = account.configured or shared
-                source = (
-                    f"CAPITAL_{name.upper()}_*" if account.configured
-                    else ("CAPITAL_* (shared)" if shared else "not set")
-                )
+                if account.configured:
+                    source = f"CAPITAL_{name.upper()}_*"
+                elif shared:
+                    # Capital.com issues separate keys per account, so a shared
+                    # key is almost always the demo one. Saying "ready" without
+                    # that caveat invites a confusing 401 later.
+                    source = (
+                        "CAPITAL_* (shared -- likely a demo key; live needs its own)"
+                        if name == "live" else "CAPITAL_* (shared)"
+                    )
+                else:
+                    source = "not set"
                 marker = "->" if name == settings.environment else "  "
                 gate = ""
                 if name == "live":
                     gate = "  [live_enabled: {}]".format(
                         "yes" if settings.live_enabled else "NO -- live refused"
                     )
-                print(f"{marker} {name:<5} {'ready' if ready else 'missing':<8} "
+                state = "ready" if account.configured else (
+                    "unsure" if ready else "missing"
+                )
+                print(f"{marker} {name:<5} {state:<8} "
                       f"{source}{gate}")
                 environment_config = Config()
                 environment_config.database = config.database
