@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from ..analysis.bias import trend_strength
-from ..analysis.indicators import adx, atr, ema, last_value, swing_points
+from ..analysis.indicators import adx, atr, ema, last_two, last_value, macd, swing_points
 from ..analysis import chart as chart_module
 from ..analysis.report import ReportBuilder, render_markdown, render_text
 from ..broker.base import BrokerAdapter, PartialCloseStrategy
@@ -456,7 +456,11 @@ class Supervisor:
             self._absorb_extremes(trade, snapshot)
             trade.update_best_price(price)
 
-            evaluation = evaluate(trade, snapshot, self.config.management)
+            evaluation = evaluate(
+                trade, snapshot, self.config.management, self.config.reversal
+            )
+            if evaluation.reversal is not None:
+                trade.reversal_streak = evaluation.reversal.streak
             if paused:
                 if evaluation.decisions:
                     log.info(
@@ -467,6 +471,7 @@ class Supervisor:
                 continue
 
             applied = self.engine.apply(trade, evaluation)
+            self._maybe_alert_reversal(trade, evaluation, snapshot, price, applied)
             self.store.save_trade(trade)
             if applied:
                 self.notifier.send(
@@ -476,6 +481,57 @@ class Supervisor:
                 )
             if trade.status is TradeStatus.CLOSED:
                 self._finalise(trade, notify=False)
+
+    def _maybe_alert_reversal(
+        self,
+        trade: ManagedTrade,
+        evaluation: Evaluation,
+        snapshot: MarketSnapshot,
+        price: float,
+        applied: List[str],
+    ) -> None:
+        """Tell the user the trend turned, once per episode.
+
+        The alert fires whether or not the bot could act, because the decision
+        that remains -- hold, or get out -- is the user's. It is rate-limited
+        so a market chopping either side of a cross cannot spam the phone.
+        """
+        signal = evaluation.reversal
+        if signal is None or not signal.confirmed or trade.reversal_muted:
+            return
+        cooldown = timedelta(minutes=self.config.reversal.cooldown_minutes)
+        if trade.reversal_handled_at and utcnow() - trade.reversal_handled_at < cooldown:
+            return
+        trade.reversal_handled_at = utcnow()
+
+        lines = [
+            self.t("reversal.header", epic=trade.epic, id=trade.short_id),
+            self.t("reversal.evidence", agreeing=signal.agreeing,
+                   total=len(signal.signals), adx=f"{snapshot.adx:.0f}",
+                   detail=signal.summary(self.t)),
+            self.t("reversal.position",
+                   direction=self.t.direction_name(trade.direction),
+                   r=f"{trade.r_multiple(price):+.2f}"),
+        ]
+        if applied:
+            lines.append(self.t("reversal.acted", action="; ".join(applied)))
+        else:
+            lines.append(self.t("reversal.no_action"))
+        lines.append(self.t("reversal.options", id=trade.short_id))
+
+        self.store.log_event("reversal", signal.summary(),
+                             deal_id=trade.deal_id, epic=trade.epic)
+        self.notifier.send("\n".join(lines), level="warn")
+
+    def hold_command(self, argument: str) -> str:
+        """Mute reversal alerts for one trade, or turn them back on."""
+        trade = self.store.trade_by_short_id(argument.strip())
+        if trade is None:
+            return self.t("adoption.not_found", id=argument.strip())
+        trade.reversal_muted = not trade.reversal_muted
+        self.store.save_trade(trade)
+        key = "reversal.muted" if trade.reversal_muted else "reversal.unmuted"
+        return self.t(key, epic=trade.epic, id=trade.short_id)
 
     def _absorb_extremes(self, trade: ManagedTrade, snapshot: MarketSnapshot) -> None:
         """Fold recent candle extremes into the high-water mark.
@@ -527,10 +583,19 @@ class Supervisor:
 
         candles = self._cached_candles(epic, timeframe, management.management_lookback)
         atr_value = last_value(atr(candles, management.trail_atr_period)) or 0.0
-        adx_series, _, _ = adx(candles, 14)
+        adx_series, plus_di, minus_di = adx(candles, 14)
         adx_value = last_value(adx_series) or 0.0
         closes = [candle.close for candle in candles]
         highs, lows = swing_points(candles, management.swing_left, management.swing_right)
+
+        # The previous bar's readings as well as the current ones: a cross is
+        # only visible as a change between two bars.
+        fast_now, fast_prev = last_two(ema(closes, 20))
+        slow_now, slow_prev = last_two(ema(closes, 50))
+        plus_now, plus_prev = last_two(plus_di)
+        minus_now, minus_prev = last_two(minus_di)
+        _, _, histogram = macd(closes)
+        hist_now, hist_prev = last_two(histogram)
 
         return MarketSnapshot(
             epic=epic,
@@ -538,12 +603,20 @@ class Supervisor:
             candles=candles,
             atr=atr_value,
             adx=adx_value,
-            ema_fast=last_value(ema(closes, 20)) or quote.mid,
-            ema_slow=last_value(ema(closes, 50)) or quote.mid,
+            ema_fast=fast_now or quote.mid,
+            ema_slow=slow_now or quote.mid,
             strength=trend_strength(adx_value, management),
             swing_high=highs[-1][1] if highs else None,
             swing_low=lows[-1][1] if lows else None,
             rules=self.broker.market_rules(epic),
+            plus_di=plus_now,
+            minus_di=minus_now,
+            plus_di_prev=plus_prev,
+            minus_di_prev=minus_prev,
+            ema_fast_prev=fast_prev,
+            ema_slow_prev=slow_prev,
+            macd_hist=hist_now,
+            macd_hist_prev=hist_prev,
         )
 
     def _cached_candles(self, epic: str, timeframe: str, limit: int) -> List[Candle]:
@@ -758,6 +831,7 @@ class Supervisor:
         self.notifier.register("plan", self.plan_command)
         self.notifier.register("close", self.close_command)
         self.notifier.register("be", self.breakeven_command)
+        self.notifier.register("hold", self.hold_command)
         self.notifier.register("lang", self.set_language)
         self.notifier.register("pause", lambda _: self.set_paused(True))
         self.notifier.register("resume", lambda _: self.set_paused(False))

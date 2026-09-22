@@ -204,6 +204,32 @@ rejected the trade still gets de-risked. The stop goes to the entry price
 exactly (`breakeven_offset_r: 0.0`). In `three_deals` mode every leg still open
 moves, so once TP1 trades the whole basket is risk-free.
 
+### Trend reversal failsafe
+
+Four independent signals, checked on every cycle: a DI cross, a close beyond the
+last confirmed swing, an EMA cross, and a momentum flip that is widening rather
+than flat. `min_signals` of them must agree **and** keep agreeing for
+`confirm_cycles` in a row — a single bar poking through a swing low is noise,
+which is what the stop is already for. ADX gates the whole thing: a market with
+no trend has no trend to reverse.
+
+Detection is deterministic on purpose. A language model is seconds slow, answers
+the same input differently twice, and cannot be backtested — none of which belong
+on the path that decides whether to pull your stop in.
+
+What it does on a confirmed reversal is bounded by the system's rules:
+
+- `tighten` (default) pulls the stop to `tighten_atr` behind price. Still
+  ratchet-only, still inside the broker's minimum distance, so it can only ever
+  reduce risk.
+- `close` exits the remaining size.
+- `alert` touches nothing.
+
+Below `min_r_to_act` it alerts and does nothing, because the only ways to
+"recover" a losing position are widening the stop or adding to it, and both are
+forbidden. You get told; the decision is yours. `/hold <id>` mutes the alerts
+for one trade without changing how it is managed.
+
 ### Entries against the bias
 
 If you buy while the plan reads bearish, the bot rebuilds the levels for the
@@ -309,6 +335,7 @@ tmbot/
     paper.py           In-memory netting broker for tests and offline runs
   analysis/
     chart.py           Annotated plan charts, light/dark, Arabic-shaped
+    reversal.py        Four-signal trend-reversal detection (deterministic)
     indicators.py      EMA/SMA/RSI/ATR/ADX/MACD/swings, pure Python
     levels.py          Zone clustering -> TP1/TP2/TP3 + SL
     bias.py            Weighted technical read
@@ -321,7 +348,7 @@ tmbot/
     supervisor.py      Poll loop, adoption, schedules, commands
   notify/              Console, Telegram (with command polling), fan-out
   cli.py
-tests/                 130 tests, no network
+tests/                 147 tests, no network
 ```
 
 The split that matters: `manage/rules.py` is pure. It takes a trade and a market

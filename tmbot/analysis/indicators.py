@@ -198,6 +198,14 @@ def last_value(series: Series) -> Optional[float]:
     return None
 
 
+def last_two(series: Series) -> Tuple[Optional[float], Optional[float]]:
+    """The latest and previous defined values -- what a cross needs."""
+    defined = [value for value in series if value is not None]
+    if not defined:
+        return None, None
+    return defined[-1], (defined[-2] if len(defined) > 1 else None)
+
+
 def slope(series: Series, lookback: int = 10) -> Optional[float]:
     """Average per-bar change of the last ``lookback`` defined values."""
     defined = [value for value in series if value is not None]

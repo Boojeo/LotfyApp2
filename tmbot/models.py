@@ -417,6 +417,11 @@ class ManagedTrade:
     stop_level: Optional[float] = None
     best_price: Optional[float] = None  # highest high (long) / lowest low (short) since entry
     tp3_extensions: int = 0
+    # Reversal state. `streak` counts consecutive confirmed detections so one
+    # noisy bar cannot trigger a recovery; `muted` is set by /hold.
+    reversal_streak: int = 0
+    reversal_handled_at: Optional[datetime] = None
+    reversal_muted: bool = False
     opened_at: Optional[datetime] = None
     adopted_at: datetime = field(default_factory=utcnow)
     closed_at: Optional[datetime] = None
@@ -470,6 +475,9 @@ class ManagedTrade:
             "stop_level": self.stop_level,
             "best_price": self.best_price,
             "tp3_extensions": self.tp3_extensions,
+            "reversal_streak": self.reversal_streak,
+            "reversal_handled_at": _iso(self.reversal_handled_at),
+            "reversal_muted": self.reversal_muted,
             "opened_at": _iso(self.opened_at),
             "adopted_at": _iso(self.adopted_at),
             "closed_at": _iso(self.closed_at),
@@ -502,6 +510,9 @@ class ManagedTrade:
             stop_level=_opt_float(raw.get("stop_level")),
             best_price=_opt_float(raw.get("best_price")),
             tp3_extensions=int(raw.get("tp3_extensions", 0)),
+            reversal_streak=int(raw.get("reversal_streak", 0)),
+            reversal_handled_at=_parse_dt(raw.get("reversal_handled_at")),
+            reversal_muted=bool(raw.get("reversal_muted")),
             opened_at=_parse_dt(raw.get("opened_at")),
             adopted_at=_parse_dt(raw.get("adopted_at")) or utcnow(),
             closed_at=_parse_dt(raw.get("closed_at")),
@@ -561,3 +572,17 @@ class MarketSnapshot:
     swing_high: Optional[float] = None
     swing_low: Optional[float] = None
     rules: Optional[MarketRules] = None
+    # Reversal detection needs the previous bar's values to see a cross, not
+    # just the current reading.
+    plus_di: Optional[float] = None
+    minus_di: Optional[float] = None
+    plus_di_prev: Optional[float] = None
+    minus_di_prev: Optional[float] = None
+    ema_fast_prev: Optional[float] = None
+    ema_slow_prev: Optional[float] = None
+    macd_hist: Optional[float] = None
+    macd_hist_prev: Optional[float] = None
+
+    @property
+    def last_close(self) -> Optional[float]:
+        return self.candles[-1].close if self.candles else None

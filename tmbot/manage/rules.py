@@ -12,7 +12,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from ..config import ManagementConfig
+from ..analysis.reversal import ReversalSignal, detect, recovery_stop
+from ..config import ManagementConfig, ReversalConfig
 from ..models import (
     Direction,
     ManagedTrade,
@@ -68,6 +69,7 @@ class Blocked:
 class Evaluation:
     decisions: List[Decision]
     blocked: List[Blocked]
+    reversal: Optional["ReversalSignal"] = None
 
     def __iter__(self):
         return iter(self.decisions)
@@ -149,6 +151,7 @@ def evaluate(
     trade: ManagedTrade,
     snapshot: MarketSnapshot,
     config: ManagementConfig,
+    reversal_config: Optional[ReversalConfig] = None,
 ) -> Evaluation:
     """Decide what should happen to ``trade`` right now."""
     decisions: List[Decision] = []
@@ -256,28 +259,27 @@ def evaluate(
         ))
         remaining = round(remaining - size, 6)
 
-    # ---------------------------------------------------------------- break-even
-    # Deliberately keyed off price, not off the partial having succeeded: if the
-    # partial close fails we still want the trade risk-free.
-    if not trade.breakeven_done and _stage_reached(trade, config.breakeven_stage, price):
+    # ---------------------------------------------------------------- stop candidates
+    # Break-even, trailing and reversal can all want the stop moved in the same
+    # cycle. Each proposes a level; the tightest valid one wins and a single
+    # modification goes to the broker. Letting each overwrite the last sends
+    # three requests and lands on whichever ran last, not whichever is best.
+    stop_candidates: List[tuple] = []
+
+    # Keyed off price reaching the stage, not off the partial having succeeded:
+    # if the partial close fails we still want the trade risk-free.
+    breakeven_due = not trade.breakeven_done and _stage_reached(
+        trade, config.breakeven_stage, price
+    )
+    if breakeven_due:
         level = round_price(
             trade.entry_price + direction.sign * config.breakeven_offset_r * trade.initial_risk
         )
-        if _valid_stop(trade, level, price, rules):
-            decisions.append(Decision(
-                kind=DecisionKind.SET_STOP,
-                deal_id=trade.deal_id,
-                key=f"{trade.deal_id}:breakeven",
-                reason=f"{config.breakeven_stage} reached -- stop to entry {level}",
-                reason_key="reason.breakeven",
-                reason_args={"stage": config.breakeven_stage, "level": level},
-                stop_level=level,
-            ))
-        else:
-            blocked.append(Blocked(
-                DecisionKind.SET_STOP,
-                f"break-even stop {level} is inside the broker's minimum distance from {price}",
-            ))
+        stop_candidates.append((
+            level, "breakeven", "reason.breakeven",
+            {"stage": config.breakeven_stage, "level": level},
+            f"{config.breakeven_stage} reached -- stop to entry {level}",
+        ))
 
     # ---------------------------------------------------------------- final target
     # In three-deal mode every other leg has its own exit and must not be
@@ -341,48 +343,93 @@ def evaluate(
             candidate = chandelier_stop(trade, snapshot, multiplier, config)
             if candidate is not None:
                 # Once risk-free, never give the entry back.
-                if trade.breakeven_done or any(
-                    decision.key.endswith(":breakeven") for decision in decisions
-                ):
+                if trade.breakeven_done or breakeven_due:
                     candidate = (
                         max(candidate, trade.entry_price) if direction is Direction.BUY
                         else min(candidate, trade.entry_price)
                     )
                 candidate = round_price(candidate)
-                minimum_step = config.min_stop_improvement_atr * snapshot.atr
-                pending_stop = next(
-                    (d.stop_level for d in decisions if d.kind is DecisionKind.SET_STOP), None
-                )
-                improves = _improves(trade, candidate, minimum_step) and (
-                    pending_stop is None
-                    or (candidate > pending_stop if direction is Direction.BUY
-                        else candidate < pending_stop)
-                )
-                if not improves:
-                    pass  # nothing to do: the stop is already at least this good
-                elif not _valid_stop(trade, candidate, price, rules):
-                    blocked.append(Blocked(
-                        DecisionKind.SET_STOP,
-                        f"trailing stop {candidate} is inside the broker's minimum "
-                        f"distance from {price}",
-                    ))
-                else:
-                    decisions = [
-                        d for d in decisions
-                        if not (d.kind is DecisionKind.SET_STOP and d.key.endswith(":breakeven"))
-                    ] + [Decision(
-                        kind=DecisionKind.SET_STOP,
-                        deal_id=trade.deal_id,
-                        key=f"{trade.deal_id}:trail:{candidate}",
-                        reason=(
-                            f"{snapshot.strength.value} trend, k={multiplier}, "
-                            f"best {trade.best_price}, ATR {snapshot.atr:.5f} -> stop {candidate}"
-                        ),
-                        reason_key="reason.trail",
-                        reason_args={"strength": snapshot.strength.value,
-                                     "k": multiplier, "best": trade.best_price,
-                                     "atr": f"{snapshot.atr:.5f}", "level": candidate},
-                        stop_level=candidate,
-                    )]
+                stop_candidates.append((
+                    candidate, f"trail:{candidate}", "reason.trail",
+                    {"strength": snapshot.strength.value, "k": multiplier,
+                     "best": trade.best_price, "atr": f"{snapshot.atr:.5f}",
+                     "level": candidate},
+                    (f"{snapshot.strength.value} trend, k={multiplier}, "
+                     f"best {trade.best_price}, ATR {snapshot.atr:.5f} -> stop {candidate}"),
+                ))
 
-    return Evaluation(decisions=decisions, blocked=blocked)
+    # ---------------------------------------------------------------- reversal failsafe
+    signal: Optional[ReversalSignal] = None
+    if reversal_config is not None and reversal_config.enabled and remaining > 0:
+        signal = detect(trade, snapshot, reversal_config)
+        actionable = (
+            signal.confirmed
+            and not trade.reversal_muted
+            and trade.r_multiple(price) >= reversal_config.min_r_to_act
+        )
+        if actionable and reversal_config.action == "close":
+            decisions.append(Decision(
+                kind=DecisionKind.CLOSE_ALL,
+                deal_id=trade.deal_id,
+                key=f"{trade.deal_id}:reversal_close:{signal.streak}",
+                reason=f"trend reversed against the position: {signal.summary()}",
+                reason_key="reason.reversal_close",
+                reason_args={"detail": signal.summary()},
+                size=remaining,
+            ))
+            remaining = 0.0
+            stop_candidates.clear()
+        elif actionable and reversal_config.action == "tighten":
+            candidate = recovery_stop(trade, snapshot, reversal_config)
+            if candidate is not None:
+                candidate = round_price(candidate)
+                stop_candidates.append((
+                    candidate, f"reversal:{candidate}", "reason.reversal_tighten",
+                    {"detail": signal.summary(), "level": candidate},
+                    f"reversal ({signal.summary()}) -- stop tightened to {candidate}",
+                ))
+        elif signal.confirmed and not trade.reversal_muted:
+            blocked.append(Blocked(
+                DecisionKind.SET_STOP,
+                f"reversal confirmed but the trade is only "
+                f"{trade.r_multiple(price):+.2f}R -- alerting instead of acting",
+            ))
+
+    # ---------------------------------------------------------------- one stop wins
+    # Guarded on the size the trade *had*, not what is left after a close
+    # decided above: if that close is rejected the position is still open, and
+    # the stop is the only thing protecting it.
+    if stop_candidates and trade.remaining_size > 0:
+        # Tightest first, then fall down the list. Taking only the best and
+        # giving up when it is invalid would drop a perfectly good break-even
+        # because a trailing level happened to sit inside the spread.
+        ranked = sorted(
+            stop_candidates, key=lambda item: item[0],
+            reverse=direction is Direction.BUY,
+        )
+        minimum_step = config.min_stop_improvement_atr * snapshot.atr
+        rejected: List[str] = []
+        for level, suffix, reason_key, reason_args, english in ranked:
+            if not _improves(trade, level, minimum_step):
+                continue  # the stop is already at least this good
+            if not _valid_stop(trade, level, price, rules):
+                rejected.append(
+                    f"stop {level} is inside the broker's minimum distance from {price}"
+                )
+                continue
+            # First in the list: protection lands before any close is tried.
+            decisions.insert(0, Decision(
+                kind=DecisionKind.SET_STOP,
+                deal_id=trade.deal_id,
+                key=f"{trade.deal_id}:{suffix}",
+                reason=english,
+                reason_key=reason_key,
+                reason_args=reason_args,
+                stop_level=level,
+            ))
+            break
+        else:
+            for reason in rejected:
+                blocked.append(Blocked(DecisionKind.SET_STOP, reason))
+
+    return Evaluation(decisions=decisions, blocked=blocked, reversal=signal)

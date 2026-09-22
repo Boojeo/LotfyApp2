@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from ..broker.base import BrokerAdapter, PartialCloseStrategy
 from ..config import Config
@@ -35,6 +35,18 @@ class TradeEngine:
     notifier: Notifier
     t: Translator = field(default_factory=Translator)
 
+    # Reason arguments that hold a stored enum value rather than a number.
+    # rules.py is pure and has no translator, so they are converted here, at
+    # the point the text is rendered.
+    TERM_ARGS = {"strength": "strength", "direction": "direction", "bias": "bias"}
+
+    def _localise(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            name: self.t.term(self.TERM_ARGS[name], value) if name in self.TERM_ARGS
+            else value
+            for name, value in args.items()
+        }
+
     def describe(self, decision: Decision) -> str:
         """Render a decision for the user, in their language.
 
@@ -43,7 +55,7 @@ class TradeEngine:
         """
         stage = decision.stage.value if decision.stage else "?"
         reason = (
-            self.t(decision.reason_key, **decision.reason_args)
+            self.t(decision.reason_key, **self._localise(decision.reason_args))
             if decision.reason_key else decision.reason
         )
         if decision.kind is DecisionKind.PARTIAL_CLOSE:

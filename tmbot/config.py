@@ -92,6 +92,25 @@ class ManagementConfig:
 
 
 @dataclass
+class ReversalConfig:
+    """Trend-reversal failsafe.
+
+    The bot never opens a position to recover -- no hedging, no averaging down.
+    It protects what is already there: tighten, take profit early, or tell you.
+    """
+
+    enabled: bool = True
+    min_signals: int = 2          # how many independent signals must agree
+    confirm_cycles: int = 2       # consecutive detections before acting
+    adx_min: float = 20.0         # below this the market has no trend to reverse
+    action: str = "tighten"       # tighten | close | alert
+    tighten_atr: float = 1.0      # pull the stop to this many ATR behind price
+    min_r_to_act: float = 0.0     # only act once the trade is this profitable
+    cooldown_minutes: float = 60.0
+    alert_only_below_min_r: bool = True
+
+
+@dataclass
 class EpicConfig:
     epic: str
     display: str = ""
@@ -162,6 +181,7 @@ class ReportConfig:
 class Config:
     broker: BrokerConfig = field(default_factory=BrokerConfig)
     management: ManagementConfig = field(default_factory=ManagementConfig)
+    reversal: ReversalConfig = field(default_factory=ReversalConfig)
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
     news: NewsConfig = field(default_factory=NewsConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
@@ -214,6 +234,11 @@ class Config:
                 )
         if self.telegram.enabled and not (self.telegram.bot_token and self.telegram.chat_id):
             raise ConfigError("telegram.enabled is true but bot_token/chat_id are not set")
+        if self.reversal.action not in ("tighten", "close", "alert"):
+            raise ConfigError(
+                "reversal.action must be 'tighten', 'close' or 'alert' -- the bot "
+                "never opens a position to recover"
+            )
         if self.report.chart_theme not in ("light", "dark"):
             raise ConfigError("report.chart_theme must be 'light' or 'dark'")
         if self.language not in LANGUAGES:
@@ -251,6 +276,7 @@ def _coerce(cls: Any, raw: Any) -> Any:
 _NESTED = {
     "BrokerConfig": BrokerConfig,
     "ManagementConfig": ManagementConfig,
+    "ReversalConfig": ReversalConfig,
     "AnalysisConfig": AnalysisConfig,
     "NewsConfig": NewsConfig,
     "LLMConfig": LLMConfig,

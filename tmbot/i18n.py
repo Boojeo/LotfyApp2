@@ -320,6 +320,14 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "{strength} trend, k={k}, best {best}, ATR {atr} -> stop {level}",
         "ar": "اتجاه {strength}، المعامل {k}، أفضل سعر {best}، المدى {atr} ← الوقف {level}",
     },
+    "reason.reversal_tighten": {
+        "en": "reversal ({detail}) -- stop tightened to {level}",
+        "ar": "انعكاس ({detail}) — تم تضييق الوقف إلى {level}",
+    },
+    "reason.reversal_close": {
+        "en": "trend reversed against the position: {detail}",
+        "ar": "انعكس الاتجاه ضد المركز: {detail}",
+    },
     "reason.initial_stop": {
         "en": "initial protective stop from plan {plan_id}",
         "ar": "وقف الحماية الابتدائي وفق الخطة {plan_id}",
@@ -335,6 +343,67 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "reason.manual_breakeven": {
         "en": "manual break-even requested",
         "ar": "طلب نقل الوقف إلى نقطة التعادل يدويًا",
+    },
+
+    # ---------------------------------------------------------------- reversal signals
+    "signal.di_cross.buy": {
+        "en": "-DI crossed +DI (+DI {plus} / -DI {minus})",
+        "ar": "تقاطع -DI فوق +DI (+DI {plus} / -DI {minus})",
+    },
+    "signal.di_cross.sell": {
+        "en": "+DI crossed -DI (+DI {plus} / -DI {minus})",
+        "ar": "تقاطع +DI فوق -DI (+DI {plus} / -DI {minus})",
+    },
+    "signal.structure": {
+        "en": "structure broke {level}",
+        "ar": "كسر البنية السعرية عند {level}",
+    },
+    "signal.ema_cross": {
+        "en": "EMA20 crossed EMA50",
+        "ar": "تقاطع المتوسط 20 مع المتوسط 50",
+    },
+    "signal.momentum": {
+        "en": "MACD flipped to {value}",
+        "ar": "انقلب مؤشر MACD إلى {value}",
+    },
+
+    # ---------------------------------------------------------------- reversal alert
+    "reversal.header": {
+        "en": "REVERSAL on {epic} ({id})",
+        "ar": "انعكاس في {epic} ({id})",
+    },
+    "reversal.evidence": {
+        "en": "{agreeing}/{total} signals agree, ADX {adx} -- {detail}",
+        "ar": "{agreeing} من {total} إشارات متوافقة، ADX {adx} — {detail}",
+    },
+    "reversal.position": {
+        "en": "Your {direction} position is {r}R",
+        "ar": "مركزك {direction} عند {r}R",
+    },
+    "reversal.acted": {
+        "en": "Action taken: {action}",
+        "ar": "الإجراء المتخذ: {action}",
+    },
+    "reversal.no_action": {
+        "en": (
+            "No action taken -- the bot never opens a position to recover. "
+            "Decide yourself:"
+        ),
+        "ar": (
+            "لم يُتخذ أي إجراء — البوت لا يفتح أي مركز للتعويض. القرار لك:"
+        ),
+    },
+    "reversal.options": {
+        "en": "/close {id} to exit now  |  /hold {id} to stop these alerts on this trade",
+        "ar": "‎/close {id}‎ للخروج الآن  |  ‎/hold {id}‎ لإيقاف هذه التنبيهات لهذه الصفقة",
+    },
+    "reversal.muted": {
+        "en": "Reversal alerts muted for {epic} ({id}). It is still managed normally.",
+        "ar": "تم كتم تنبيهات الانعكاس لـ {epic} ({id}). تستمر إدارته بشكل طبيعي.",
+    },
+    "reversal.unmuted": {
+        "en": "Reversal alerts back on for {epic} ({id}).",
+        "ar": "أُعيد تفعيل تنبيهات الانعكاس لـ {epic} ({id}).",
     },
 
     # ---------------------------------------------------------------- connection
@@ -425,6 +494,7 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "/plan [epic]       show the stored plan levels\n"
             "/close <id>        close the remaining size now\n"
             "/be <id>           move the stop to entry now\n"
+            "/hold <id>         mute reversal alerts on one trade\n"
             "/lang en|ar        switch language\n"
             "/pause /resume     stop or restart all order modifications"
         ),
@@ -437,6 +507,7 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "‎/plan [epic]‎       عرض مستويات الخطة المحفوظة\n"
             "‎/close <id>‎        إغلاق الكمية المتبقية الآن\n"
             "‎/be <id>‎           نقل الوقف إلى سعر الدخول الآن\n"
+            "‎/hold <id>‎         كتم تنبيهات الانعكاس لصفقة واحدة\n"
             "‎/lang en|ar‎        تغيير اللغة\n"
             "‎/pause /resume‎     إيقاف أو استئناف تعديل الأوامر"
         ),

@@ -78,6 +78,18 @@ management:
   adoption_confirm_timeout_minutes: 30.0
   auto_decline_on_timeout: true
 
+# Trend-reversal failsafe. The bot NEVER opens a position to recover -- no
+# hedging, no averaging down. It protects what is already there.
+reversal:
+  enabled: true
+  min_signals: 2          # of 4: DI cross, structure break, EMA cross, momentum flip
+  confirm_cycles: 2       # consecutive detections before acting -- one bar is noise
+  adx_min: 20.0           # below this there is no trend to reverse
+  action: tighten         # tighten | close | alert
+  tighten_atr: 1.0        # pull the stop this many ATR behind price
+  min_r_to_act: 0.0       # below this, alert only -- acting would mean widening risk
+  cooldown_minutes: 60.0
+
 analysis:
   watchlist:
     - epic: GOLD
