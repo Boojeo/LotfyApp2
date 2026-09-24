@@ -159,9 +159,14 @@ def main(argv: Optional[List[str]] = None) -> int:
 
             account = config.broker.active
             chosen = config.broker.environment
-            print(f"Testing the {chosen} credentials against BOTH Capital.com hosts.")
-            print(f"  identifier  {account.identifier}")
-            print(f"  api key     ...{account.api_key[-4:] if account.api_key else '(not set)'}")
+            key_tail = account.api_key[-4:] if account.api_key else "(not set)"
+            print(f"Trying your {chosen.upper()} key (...{key_tail}, from "
+                  f"CAPITAL_{chosen.upper()}_API_KEY) on each Capital.com server.")
+            print(f"  login  {account.identifier}")
+            print()
+            print("This test knocks on BOTH servers on purpose. Normal commands only")
+            print(f"ever use the {chosen} server. Keys belong to your login, so one key")
+            print("can open any account the API supports on either server.")
             print()
             if not account.configured:
                 print(f"Nothing to test: the {chosen} credentials are incomplete.")
@@ -178,18 +183,19 @@ def main(argv: Optional[List[str]] = None) -> int:
                     tester.connect()
                     summary = tester.account_summary()
                     results[host] = ("ok", str(summary.get("accountId", "?")))
-                    print(f"  {host:<5} LOGGED IN   account {results[host][1]}")
+                    print(f"  {host} server  accepted -> your {host} account "
+                          f"{results[host][1]}")
                 except (AuthError, PermanentError) as exc:
                     # Capital.com answered and said no -- the useful case.
                     # Keep the table row to the code; the verdict below explains it.
                     detail = str(exc).split(" -> ")[-1].split(" (")[0].strip()
                     results[host] = ("rejected", detail or type(exc).__name__)
-                    print(f"  {host:<5} refused     {detail}")
+                    print(f"  {host} server  refused  -> {detail}")
                 except Exception as exc:
                     # Never reached the server, so this says nothing about the key.
                     detail = type(exc).__name__
                     results[host] = ("unreachable", detail)
-                    print(f"  {host:<5} unreachable (no answer -- check your internet)")
+                    print(f"  {host} server  no answer -- check your internet")
                 finally:
                     try:
                         tester.close()
