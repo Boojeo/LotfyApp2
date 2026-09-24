@@ -132,8 +132,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     _configure_logging(config.log_level)
     log = logging.getLogger("tmbot")
-    if config.broker.environment == "live" and not config.dry_run:
-        log.warning("connected to the LIVE account -- real orders will be modified")
+    # Printed before any connection is attempted, so it must not claim one.
+    if (config.broker.environment == "live" and not config.dry_run
+            and args.command not in ("envs", "check", "doctor", "journal")):
+        log.warning("LIVE environment selected -- real orders can be modified")
 
     store = Store(config.resolved_database)
     broker = CapitalComBroker(config.broker)
