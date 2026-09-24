@@ -179,6 +179,67 @@ class TimezoneTests(unittest.TestCase):
             config.validate()
 
 
+class DoctorTests(unittest.TestCase):
+    """Run `tmbot doctor` against a fake Capital.com that answers per host."""
+
+    def run_doctor(self, answers):
+        import io, contextlib, json
+        from unittest import mock
+        import requests
+        from tmbot import cli
+
+        class Response:
+            def __init__(self, status, body, headers=None):
+                self.status_code, self._body = status, body
+                self.headers = headers or {}
+                self.text = json.dumps(body)
+                self.content = self.text.encode()
+            def json(self):
+                return self._body
+
+        class HostAwareSession:
+            def post(self, url, json=None, headers=None, timeout=None):
+                host = "demo" if "demo-api" in url else "live"
+                return answers[host]
+            def request(self, method, url, **kwargs):
+                if url.endswith("/accounts"):
+                    return Response(200, {"accounts": [{"accountId": "2527", "preferred": True}]})
+                return Response(200, {})
+            def close(self):
+                pass
+
+        ok = Response(200, {}, {"CST": "c", "X-SECURITY-TOKEN": "x"})
+        answers = {k: (ok if v == "ok" else Response(401, {"errorCode": v}))
+                   for k, v in answers.items()}
+        env = {"CAPITAL_LIVE_API_KEY": "k", "CAPITAL_LIVE_IDENTIFIER": "a@b.c",
+               "CAPITAL_LIVE_PASSWORD": "p"}
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, env), \
+             mock.patch("tmbot.broker.capital.requests.Session", HostAwareSession), \
+             contextlib.redirect_stdout(out):
+            code = cli.main(["--env", "live", "doctor"])
+        return code, out.getvalue()
+
+    def test_null_account_id_is_not_blamed_on_the_key(self):
+        # Exactly what a real account returned: demo fine, live refused.
+        code, text = self.run_doctor({"demo": "ok", "live": "error.null.accountId"})
+        self.assertEqual(code, 1)
+        self.assertIn("key and password are fine", text)
+        self.assertIn("will NOT fix", text)
+        self.assertIn("CFD", text)
+        self.assertNotIn("DEMO key", text, "keys belong to the login, not an account")
+
+    def test_wrong_credentials_are_named_as_such(self):
+        code, text = self.run_doctor({"demo": "error.invalid.details",
+                                      "live": "error.invalid.details"})
+        self.assertIn("custom one you set", text)
+
+    def test_working_credentials_say_so(self):
+        code, text = self.run_doctor({"demo": "ok", "live": "ok"})
+        self.assertEqual(code, 0)
+        self.assertIn("Nothing to fix", text)
+
+
 class TaggingTests(unittest.TestCase):
     def test_alerts_carry_the_environment(self):
         from tmbot.notify.base import NullNotifier

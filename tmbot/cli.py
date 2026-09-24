@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from . import config as config_module
 from .analysis.report import ReportBuilder, render_markdown, render_text
-from .broker.capital import CapitalComBroker
+from .broker.capital import CapitalComBroker, explain
 from .config import Config
 from .errors import AuthError, PermanentError, TmbotError
 from .manage.supervisor import Supervisor
@@ -179,8 +179,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                     print(f"  {host:<5} LOGGED IN   account {results[host][1]}")
                 except (AuthError, PermanentError) as exc:
                     # Capital.com answered and said no -- the useful case.
-                    detail = str(exc).split(" -> ")[-1].strip() or type(exc).__name__
-                    results[host] = ("rejected", detail)
+                    # Keep the table row to the code; the verdict below explains it.
+                    detail = str(exc).split(" -> ")[-1].split(" (")[0].strip()
+                    results[host] = ("rejected", detail or type(exc).__name__)
                     print(f"  {host:<5} refused     {detail}")
                 except Exception as exc:
                     # Never reached the server, so this says nothing about the key.
@@ -193,8 +194,6 @@ def main(argv: Optional[List[str]] = None) -> int:
                     except Exception:
                         pass
 
-            demo_ok = results["demo"][0] == "ok"
-            live_ok = results["live"][0] == "ok"
             print()
             if results[chosen][0] == "ok":
                 print(f"These credentials work on {chosen}. Nothing to fix.")
@@ -203,21 +202,32 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print("Capital.com could not be reached, so this test proves nothing")
                 print("about your key. Check your internet and run it again.")
                 return 1
-            if chosen == "live" and demo_ok:
-                print("This is a DEMO key. It was generated while the platform was")
-                print("showing the demo account. Switch the account selector to Live")
-                print("in Capital.com, generate a new key there, and use that one.")
+            refusal = results[chosen][1].lower()
+            other = "demo" if chosen == "live" else "live"
+            if "null.accountid" in refusal:
+                print("Your key and password are fine" + (
+                    f" -- they log in on {other}." if results[other][0] == "ok" else "."
+                ))
+                print(f"But the {chosen} server has no account the API is allowed to")
+                print("trade for this login. Capital.com only supports CFD and")
+                print("spread-bet accounts through the API; MT4, MT5 and some other")
+                print("account types are excluded.")
+                print()
+                print("Generating another key will NOT fix this -- keys belong to")
+                print("your login, not to an account. Instead, in Capital.com open")
+                print(f"Settings -> My accounts with {chosen.title()} selected, and check the")
+                print("account type. You need a CFD (or spread-bet) account there.")
+                print("If it is already CFD, send Capital.com support this exact")
+                print("error: error.null.accountId on POST /api/v1/session.")
+            elif "invalid.details" in refusal:
+                print("Capital.com rejected the email, key or password. The")
+                print("password is the custom one you set when creating the API")
+                print("key, not your login password.")
             else:
-                blame = results["live"][1].lower()
-                if "accountid" in blame:
-                    print("The key is accepted but no account sits behind it on either")
-                    print("host. That normally means the live account is not open for")
-                    print("business yet: identity check incomplete, or never funded.")
-                    print("Check that you can place a trade manually in the app first.")
-                else:
-                    print("Neither host accepted these. The key or its password is")
-                    print("wrong -- note that the password is the custom one you set")
-                    print("when creating the key, not your login password.")
+                meaning = explain(refusal)
+                print(f"Refused on {chosen}: {results[chosen][1]}")
+                if meaning:
+                    print(meaning[0].upper() + meaning[1:] + ".")
             return 1
 
         if args.command == "envs":

@@ -135,11 +135,16 @@ pollers on one token steal each other's updates, and commands would land in
 whichever process grabbed them first.
 
 `doctor` tries the selected environment's credentials against **both**
-Capital.com hosts and says what follows: a key that works on demo but not live
-was generated with the account selector on the wrong setting; one refused by
-both with `error.null.accountId` means the account has no tradeable ID behind
-it, usually an unfinished identity check or an unfunded account; and a host
+Capital.com hosts and says what follows. API keys belong to your *login*, not to
+an account, so the same key authenticates on both servers; what differs is which
+account the server can find for you. `error.null.accountId` therefore means the
+key is fine but that server has **no account the API supports** — Capital.com
+only allows CFD and spread-bet accounts, and excludes MT4, MT5 and some other
+types. Regenerating keys cannot fix that; the account type has to change. A host
 that never answers is reported as unreachable rather than blamed on the key.
+
+Capital.com's documented error codes are explained inline wherever they surface,
+so a refusal says what it means rather than just which code it was.
 
 **Live takes two deliberate acts**: `broker.live_enabled: true` in the config
 file *and* `--env live` on the command line. Either alone is refused, so no
@@ -416,7 +421,7 @@ tmbot/
     supervisor.py      Poll loop, adoption, schedules, commands
   notify/              Console, Telegram (with command polling), fan-out
   cli.py
-tests/                 182 tests, no network
+tests/                 200 tests, no network
 ```
 
 The split that matters: `manage/rules.py` is pure. It takes a trade and a market

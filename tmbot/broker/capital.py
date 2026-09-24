@@ -34,6 +34,40 @@ log = logging.getLogger(__name__)
 # touching a real position.
 _PROBE_DEAL_ID = "tmbot-capability-probe"
 
+# Capital.com's own descriptions of the errors that matter here. A bare code
+# like error.null.accountId sends people after the wrong fix -- that one reads
+# like a bad key, and regenerating keys cannot help with it.
+KNOWN_ERRORS = {
+    "error.null.accountId": (
+        "this login has no account the API can trade on this server. The API "
+        "only supports CFD and spread-bet accounts; MT4, MT5 and some other "
+        "account types are excluded. The key itself is fine"
+    ),
+    "error.invalid.accountId": (
+        "that account ID does not exist or does not belong to this login -- "
+        "check CAPITAL_*_ACCOUNT_ID in .env"
+    ),
+    "error.not-different.accountId": "that account is already the active one",
+    "error.invalid.details": (
+        "wrong email, key or password. The password is the custom one set "
+        "when the API key was created, not the login password"
+    ),
+    "error.null.api.key": "no API key was sent -- check CAPITAL_*_API_KEY in .env",
+}
+
+
+def explain(code: str) -> str:
+    """The plain-language meaning of a Capital.com error code, if known."""
+    for known, meaning in KNOWN_ERRORS.items():
+        if known.lower() in str(code).lower():
+            return meaning
+    if "api key missing" in str(code).lower():
+        return (
+            "the account must be verified before API keys work -- it needs "
+            "to show a 'Generate API key' button in Settings"
+        )
+    return ""
+
 
 class CapitalComBroker(BrokerAdapter):
     name = "capital.com"
@@ -64,7 +98,13 @@ class CapitalComBroker(BrokerAdapter):
         self._authenticate()
         account_id = self.config.active.account_id
         if account_id:
-            self._request("PUT", "/api/v1/session", json={"accountId": account_id})
+            try:
+                self._request("PUT", "/api/v1/session", json={"accountId": account_id})
+            except PermanentError as exc:
+                # Asking to switch to the account that is already active is
+                # not a failure -- refusing to start over it would be.
+                if "not-different" not in str(exc.code or ""):
+                    raise
         log.info("connected to %s (%s)", self.config.base_url, self.config.environment)
 
     def close(self) -> None:
@@ -140,6 +180,9 @@ class CapitalComBroker(BrokerAdapter):
         code = body.get("errorCode") or response.text[:200]
         status = response.status_code
         message = f"{description} -> HTTP {status} {code}"
+        meaning = explain(code)
+        if meaning:
+            message = f"{message} ({meaning})"
         if status == 429:
             retry_after = response.headers.get("Retry-After")
             return RateLimitError(message, float(retry_after) if retry_after else None)

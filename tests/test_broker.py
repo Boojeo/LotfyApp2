@@ -363,3 +363,61 @@ class ParsingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class KnownErrorTests(unittest.TestCase):
+    """Capital.com's documented codes, explained in words that point at the real fix."""
+
+    def test_null_account_id_is_explained_as_an_account_type_problem(self):
+        from tmbot.broker.capital import explain
+        meaning = explain("error.null.accountId")
+        self.assertIn("CFD", meaning)
+        self.assertIn("key itself is fine", meaning,
+                      "this must not send people off regenerating keys")
+
+    def test_the_explanation_reaches_the_error_message(self):
+        broker, _ = build({
+            "POST /api/v1/session": [
+                FakeResponse(401, {"errorCode": "error.null.accountId"}),
+            ],
+        }, retry_attempts=1)
+        with self.assertRaises(AuthError) as caught:
+            broker.connect()
+        self.assertIn("error.null.accountId", str(caught.exception))
+        self.assertIn("CFD", str(caught.exception))
+
+    def test_an_unknown_code_is_passed_through_unexplained(self):
+        from tmbot.broker.capital import explain
+        self.assertEqual(explain("error.something.new"), "")
+
+    def test_api_key_missing_points_at_verification(self):
+        from tmbot.broker.capital import explain
+        self.assertIn("verified", explain("API key missing"))
+
+
+class AccountSwitchTests(unittest.TestCase):
+    def test_switching_to_the_already_active_account_is_not_a_failure(self):
+        broker, transport = build({
+            "PUT /api/v1/session": [
+                FakeResponse(400, {"errorCode": "error.not-different.accountId"}),
+            ],
+        })
+        broker.config.account_id = "252774931502543134"
+        broker.connect()   # must not raise -- refusing to start over this is a bug
+        self.assertTrue(any(m == "PUT" for m, *_ in transport.calls))
+
+    def test_an_account_that_does_not_exist_still_fails_loudly(self):
+        broker, _ = build({
+            "PUT /api/v1/session": [
+                FakeResponse(400, {"errorCode": "error.invalid.accountId"}),
+            ],
+        }, retry_attempts=1)
+        broker.config.account_id = "not-mine"
+        with self.assertRaises(PermanentError) as caught:
+            broker.connect()
+        self.assertIn("does not belong to this login", str(caught.exception))
+
+    def test_no_account_id_means_no_switch_at_all(self):
+        broker, transport = build({})
+        broker.connect()
+        self.assertFalse(any(m == "PUT" for m, *_ in transport.calls))
