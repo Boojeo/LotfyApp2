@@ -236,6 +236,16 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(fills[0].stage, "BROKER")
         self.assertTrue(fills[0].inferred, "an unobserved exit must be flagged")
 
+    def test_the_real_fill_is_used_when_the_broker_reports_one(self):
+        # MT5 keeps the closing deal in its history; no estimate needed.
+        self.broker.closing_price = lambda deal_id: 3391.25
+        self.broker._positions.clear()
+        self.supervisor.tick()
+
+        fills = self.store.fills_for(self.trade.deal_id)
+        self.assertEqual(fills[0].price, 3391.25)
+        self.assertFalse(fills[0].inferred)
+
     def test_it_is_priced_from_the_stop_when_no_quote_can_be_had(self):
         from tmbot.errors import RetryableError
         self.supervisor._quotes.clear()

@@ -136,6 +136,22 @@ class BrokerAdapter(ABC):
         """
         ...
 
+    def algo_trading_enabled(self) -> Optional[bool]:
+        """False when something on this machine blocks automated orders.
+
+        Only meaningful for a desktop terminal (MetaTrader 5's "Algo Trading"
+        button). None means the question does not apply.
+        """
+        return None
+
+    def closing_price(self, deal_id: str) -> Optional[float]:
+        """The price a position that is no longer open was actually closed at.
+
+        Lets the journal record a stop-out at its real fill instead of an
+        estimate. None when the broker cannot say.
+        """
+        return None
+
     def search_markets(self, term: str) -> List[Dict[str, Any]]:
         """Find instruments by name so a user can discover the epic to trade."""
         raise NotImplementedError(f"{self.name} cannot search markets")

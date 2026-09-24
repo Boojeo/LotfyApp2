@@ -14,3 +14,8 @@ python-bidi>=0.4         # reorders mixed Arabic/number labels
 # Optional: the fundamental/news synthesis. Without it the bot falls back to a
 # deterministic keyword read and still produces a full daily report.
 anthropic>=1.0
+
+# MetaTrader 5 (Exness and other MT5 brokers). Windows only -- it drives the
+# MT5 terminal installed on the same PC. Skipped automatically elsewhere, and
+# only needed when broker.platform is mt5.
+MetaTrader5>=5.0.45; sys_platform == "win32"

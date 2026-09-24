@@ -10,6 +10,20 @@ log_level: INFO
 language: en
 
 broker:
+  # Which broker connection to use:
+  #   capital  Capital.com's API (logs in with an API key)
+  #   mt5      a MetaTrader 5 terminal on this Windows PC -- Exness or any
+  #            other MT5 broker (logs in with account number, password, server)
+  platform: capital
+
+  # Only read when platform is mt5.
+  mt5:
+    # MT5 timestamps are in the broker's server time. Exness uses UTC (0);
+    # many other brokers use 2 or 3.
+    server_utc_offset_hours: 0
+    # How far a close may slip from the quoted price, in points.
+    deviation_points: 30
+
   # The environment is chosen on the command line (--env demo|live) and has no
   # default on purpose. Credentials for each live in .env.
   #

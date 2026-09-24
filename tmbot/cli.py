@@ -11,6 +11,7 @@ from typing import List, Optional
 from . import config as config_module
 from .analysis.report import ReportBuilder, render_markdown, render_text
 from .broker.capital import CapitalComBroker, explain
+from .broker.factory import build_broker
 from .config import Config
 from .errors import AuthError, PermanentError, TmbotError
 from .manage.supervisor import Supervisor
@@ -22,13 +23,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tmbot",
         description=(
-            "Semi-automated trade manager for Capital.com: you open the trade, "
-            "it runs the exits."
+            "Semi-automated trade manager for Capital.com or MetaTrader 5: you "
+            "open the trade, it runs the exits."
         ),
     )
     parser.add_argument(
         "--env", choices=("demo", "live"), required=True,
-        help="which Capital.com environment to connect to. Deliberately has no "
+        help="which account to connect to: demo or live. Deliberately has no "
              "default so a live account is never touched by accident.",
     )
     parser.add_argument("--config", help="path to a YAML or JSON config file")
@@ -122,6 +123,94 @@ def _build_notifier(config: Config, store: Store) -> Notifier:
     return MultiNotifier(notifiers)
 
 
+def _mt5_doctor(config: Config) -> int:
+    """Walk through everything that has to be true for MetaTrader 5 to work."""
+    import copy
+
+    from .broker.mt5 import MT5Broker
+    from .errors import ConfigError, RetryableError
+
+    chosen = config.broker.environment
+    login = config.broker.active_mt5
+    print(f"Checking MetaTrader 5 for your {chosen.upper()} account "
+          f"(MT5_{chosen.upper()}_* in .env).")
+    print(f"  account  {login.login or '(not set)'} on {login.server or '(no server set)'}")
+    print()
+    if not login.configured:
+        print(f"Nothing to test: set MT5_{chosen.upper()}_LOGIN, _PASSWORD and "
+              "_SERVER in .env.")
+        return 1
+
+    settings = copy.deepcopy(config.broker)
+    settings.retry_attempts = 1
+    broker = MT5Broker(settings)
+    problems = 0
+    try:
+        try:
+            broker.mt5
+            print("  1. MetaTrader5 package   installed")
+        except ConfigError as exc:
+            print("  1. MetaTrader5 package   MISSING")
+            print(f"     {exc}")
+            return 1
+
+        try:
+            broker.connect()
+            print("  2. terminal and login    ok")
+        except (PermanentError, RetryableError, ConfigError) as exc:
+            print("  2. terminal and login    FAILED")
+            print(f"     {exc}")
+            return 1
+
+        summary = broker.account_summary()
+        print(f"  3. account type         {summary.get('accountType')} "
+              f"(matches --env {chosen})")
+        print(f"                          {summary.get('company')}, "
+              f"{summary.get('currency')} {summary.get('balance')}")
+
+        hedging = broker.hedging_mode()
+        if hedging:
+            print("  4. hedging              yes -- your three deals stay separate")
+        else:
+            needs = config.management.exit_model == "three_deals"
+            print("  4. hedging              NO (netting account)"
+                  + (" -- three_deals will NOT work" if needs else ""))
+            problems += 1 if needs else 0
+
+        if broker.algo_trading_enabled() is False:
+            print("  5. Algo Trading button  OFF -- click it in the MT5 toolbar "
+                  "so it turns green")
+            problems += 1
+        else:
+            print("  5. Algo Trading button  on")
+
+        missing = []
+        for item in config.analysis.watchlist:
+            try:
+                broker.market_rules(item.epic)
+            except (PermanentError, RetryableError):
+                missing.append(item.epic)
+        if not config.analysis.watchlist:
+            print("  6. watchlist            empty")
+        elif missing:
+            print(f"  6. watchlist            not found: {', '.join(missing)}")
+            print("     Symbol names differ per broker and account type. Find the")
+            print("     right one with:  markets gold   (then copy the first column)")
+            problems += 1
+        else:
+            print(f"  6. watchlist            all {len(config.analysis.watchlist)} "
+                  "symbols found")
+    finally:
+        broker.close()
+
+    print()
+    if problems:
+        print(f"{problems} thing(s) to fix above before running the bot.")
+        return 1
+    print("Everything checks out. Next: run with --dry-run first.")
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -138,7 +227,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         log.warning("LIVE environment selected -- real orders can be modified")
 
     store = Store(config.resolved_database)
-    broker = CapitalComBroker(config.broker)
+    broker = build_broker(config.broker)
     notifier = _build_notifier(config, store)
 
     try:
@@ -153,6 +242,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             signal.signal(signal.SIGTERM, handle_signal)
             supervisor.run()
             return 0
+
+        if args.command == "doctor" and config.broker.platform == "mt5":
+            return _mt5_doctor(config)
 
         if args.command == "doctor":
             import copy
@@ -241,8 +333,29 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.command == "envs":
             settings = config.broker
             print(f"selected      {settings.environment}")
+            print(f"platform      {settings.platform}"
+                  + ("  (MetaTrader 5)" if settings.platform == "mt5" else "  (Capital.com)"))
             print()
             for name in ("demo", "live"):
+                if settings.platform == "mt5":
+                    login = getattr(settings.mt5, name)
+                    marker = "->" if name == settings.environment else "  "
+                    gate = ""
+                    if name == "live":
+                        gate = "  [live_enabled: {}]".format(
+                            "yes" if settings.live_enabled else "NO -- live refused"
+                        )
+                    state = "ready" if login.configured else "missing"
+                    where = (f"account {login.login} on {login.server}"
+                             if login.configured else f"set MT5_{name.upper()}_*")
+                    print(f"{marker} {name:<5} {state:<8} {where}{gate}")
+                    environment_config = Config()
+                    environment_config.database = config.database
+                    environment_config.report = config.report
+                    environment_config.broker.environment = name
+                    print(f"      database  {environment_config.resolved_database}")
+                    print(f"      reports   {environment_config.resolved_report_dir}")
+                    continue
                 account = getattr(settings, name)
                 shared = bool(
                     settings.api_key and settings.identifier and settings.password
@@ -369,7 +482,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "hedging mode is ON -- your three deals will stay separate."
                     if probe.hedging_mode
                     else "WARNING: hedging mode is OFF -- your three deals will be "
-                         "merged into one. Run: tmbot hedging on"
+                         "merged into one. " + (
+                             "This MT5 account nets; open a hedging account."
+                             if config.broker.platform == "mt5"
+                             else "Run: tmbot hedging on"
+                         )
                 )
             return 1 if probe.blocking else 0
 
@@ -377,6 +494,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             account = broker.account_summary()
             print(f"account {account.get('accountId')} ({account.get('accountName', '')})")
             print(f"currency {account.get('currency')}  balance {account.get('balance')}")
+            if account.get("accountType"):
+                print(f"type {account['accountType']}  leverage 1:{account.get('leverage')}")
             print(f"hedging mode: {broker.hedging_mode()}")
             return 0
 
@@ -391,6 +510,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                 )
                 return 0
             wanted = args.state == "on"
+            if config.broker.platform == "mt5" and current is not wanted:
+                print("MetaTrader 5 fixes hedging or netting when the account is")
+                print("opened -- it cannot be switched from here. For three_deals,")
+                print("open a new account of the hedging type at your broker (at")
+                print("Exness, MT5 accounts are hedging unless you chose otherwise).")
+                return 1
             if current is wanted:
                 print(f"hedging mode is already {args.state}; nothing to do")
                 return 0
@@ -411,14 +536,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             if not found:
                 print(f"nothing matched {args.term!r}")
                 return 1
-            print(f"{'EPIC':<20} {'INSTRUMENT':<38} STATUS")
+            print(f"{'NAME TO USE':<20} {'INSTRUMENT':<38} STATUS")
             for market in found[:40]:
                 print(
                     f"{market.get('epic', ''):<20} "
                     f"{market.get('instrumentName', '')[:38]:<38} "
                     f"{market.get('marketStatus', '')}"
                 )
-            print("\nUse the EPIC value in your config watchlist and in report/plan commands.")
+            print("\nCopy the first column exactly (capitals and any suffix such as 'm')")
+            print("into your config watchlist and into report/plan commands.")
             return 0
 
         if args.command == "positions":
@@ -440,7 +566,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.command == "report":
             reporter = ReportBuilder(broker, config)
-            epics = [args.epic.upper()] if args.epic else [
+            epics = [config.canonical_epic(args.epic)] if args.epic else [
                 item.epic for item in config.analysis.watchlist
             ]
             if not epics:

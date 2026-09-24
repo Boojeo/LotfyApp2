@@ -98,6 +98,8 @@ class Supervisor:
             )
         if self.config.management.exit_model == "three_deals" and probe.hedging_mode is False:
             self.notifier.send(self.t("startup.hedging_off"), level="error")
+        if self.broker.algo_trading_enabled() is False:
+            self.notifier.send(self.t("startup.algo_trading_off"), level="error")
         self._reconcile_pending_actions()
         self._register_commands()
         self.notifier.set_tag(f"[{self.config.broker.environment.upper()}] ")
@@ -593,9 +595,18 @@ class Supervisor:
         # off, and the first cycle back finds it gone. Returning here would
         # drop the trade from the journal entirely and quietly flatter the
         # results, so fall back rather than give up.
-        price = None
+        # Some brokers (MT5) keep the real fill in their deal history -- use it
+        # when there, and only estimate when there is nothing better.
+        try:
+            actual = self.broker.closing_price(trade.deal_id)
+        except Exception as exc:
+            log.warning("%s: could not read the closing deal (%s)", trade.epic, exc)
+            actual = None
+        price = actual
         quote = self._quotes.get(trade.epic)
-        if quote is not None:
+        if price is not None:
+            pass
+        elif quote is not None:
             price = quote.exit_price(trade.direction)
         else:
             try:
@@ -616,7 +627,7 @@ class Supervisor:
             initial_risk=trade.initial_risk,
             fraction=min(1.0, trade.remaining_size / trade.initial_size)
             if trade.initial_size else 0.0,
-            inferred=True,
+            inferred=actual is None,
         )
         self.store.record_fill(fill)
         trade.realised = round(trade.realised + fill.r_multiple, 6)
@@ -956,7 +967,7 @@ class Supervisor:
         return "\n".join(lines) if lines else self.t("status.empty")
 
     def report_command(self, argument: str) -> str:
-        epics = [argument.strip().upper()] if argument.strip() else [
+        epics = [self.config.canonical_epic(argument)] if argument.strip() else [
             item.epic for item in self.config.analysis.watchlist
         ]
         if not epics:
@@ -971,7 +982,7 @@ class Supervisor:
         return "\n\n".join(replies)
 
     def plan_command(self, argument: str) -> str:
-        epic = argument.strip().upper()
+        epic = self.config.canonical_epic(argument)
         if not epic:
             return self.t("command.plan_usage")
         plan = self.store.latest_plan(epic)

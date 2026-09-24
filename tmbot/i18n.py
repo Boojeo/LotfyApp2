@@ -119,7 +119,7 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "startup.hedging_off": {
         "en": (
             "Exit model is THREE_DEALS but this account has hedging OFF, so "
-            "Capital.com will merge your three deals into one position and the "
+            "the broker will merge your three deals into one position and the "
             "legs cannot be closed separately.\n"
             "Turn hedging on, or switch management.exit_model to partial_close."
         ),
@@ -127,6 +127,18 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "نموذج الخروج هو ثلاث صفقات، لكن التحوط معطّل في هذا الحساب، لذلك "
             "ستدمج المنصة صفقاتك الثلاث في مركز واحد ولن يمكن إغلاق كل صفقة على حدة.\n"
             "فعّل التحوط، أو غيّر نموذج الخروج إلى partial_close."
+        ),
+    },
+    "startup.algo_trading_off": {
+        "en": (
+            "MetaTrader 5 has Algo Trading switched OFF, so the bot cannot move "
+            "stops or close deals -- every attempt will be refused.\n"
+            "Click the Algo Trading button in the MT5 toolbar until it turns green."
+        ),
+        "ar": (
+            "زر التداول الآلي (Algo Trading) مغلق في ميتاتريدر 5، لذلك لا يستطيع "
+            "البوت تحريك وقف الخسارة أو إغلاق الصفقات، وستُرفض كل محاولة.\n"
+            "اضغط زر Algo Trading في شريط أدوات MT5 حتى يصبح أخضر."
         ),
     },
     "startup.partials_unavailable": {

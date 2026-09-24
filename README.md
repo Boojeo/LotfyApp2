@@ -1,8 +1,9 @@
-# tmbot — semi-automated trade manager for Capital.com
+# tmbot — semi-automated trade manager for Capital.com and MetaTrader 5
 
 You take the entry. The bot takes everything after it.
 
-It never opens a position. It watches your Capital.com account, notices when you
+It never opens a position. It watches your Capital.com or MetaTrader 5 (Exness)
+account, notices when you
 have manually entered a trade, asks you to confirm, and then runs the exit plan:
 scaled partial closes, an automatic move to break-even, and a trailing stop that
 tightens or holds with the trend. Alongside that it publishes a daily
@@ -106,8 +107,9 @@ cp .env.example .env            # credentials
 cp config.example.yaml config.yaml
 ```
 
-Fill in `.env` with a Capital.com API key (Settings → API integrations; demo and
-live need separate keys).
+Fill in `.env` with a Capital.com API key (Settings → API integrations), or
+with your MetaTrader 5 login if you use Exness — see
+[Using Exness / MetaTrader 5](#using-exness--metatrader-5).
 
 ## Demo and live together
 
@@ -149,6 +151,61 @@ so a refusal says what it means rather than just which code it was.
 **Live takes two deliberate acts**: `broker.live_enabled: true` in the config
 file *and* `--env live` on the command line. Either alone is refused, so no
 single typo can point the bot at real money.
+
+## Using Exness / MetaTrader 5
+
+Set `broker.platform: mt5` and the bot talks to a MetaTrader 5 terminal on the
+same Windows PC instead of Capital.com's API. Everything else is unchanged:
+the same reports, the same exit rules, the same Telegram commands, the same
+separate demo and live journals. The Capital.com connection stays available;
+switching back is one line in the config.
+
+How it connects: the `MetaTrader5` Python package does not reach the broker
+itself. It drives the MT5 terminal program, and the terminal holds the
+connection to Exness. So the terminal has to be installed, and this only runs
+on Windows.
+
+One-time setup:
+
+1. Install **MetaTrader 5 from Exness** (Personal Area → Trading platforms)
+   and log in to your account in it once, ticking *Save password*.
+2. Click the **Algo Trading** button in the MT5 toolbar so it is green.
+   Without it every stop move and close is refused (retcode 10027), and the
+   bot says so at startup.
+3. In `.env`, fill `MT5_DEMO_LOGIN`, `MT5_DEMO_PASSWORD`, `MT5_DEMO_SERVER`
+   (and the `MT5_LIVE_*` ones for real money). These are the account number,
+   the account's *trading* password and the server name, exactly as in the
+   MT5 login window.
+4. In `config.yaml`, set `broker.platform: mt5`.
+5. Run `update.bat` (or `pip install -r requirements.txt`), which installs the
+   `MetaTrader5` package.
+6. Find your symbol names — they differ per broker and account type (Exness
+   Standard accounts add an `m`: `XAUUSDm`):
+   ```bash
+   python -m tmbot --env demo --config config.yaml markets gold
+   ```
+   Copy the first column into your watchlist.
+7. `python -m tmbot --env demo --config config.yaml doctor` walks through all
+   of the above and says what is left to fix.
+
+What is different on MT5:
+
+- **Hedging is fixed per account.** MT5 accounts are either hedging or netting
+  from the day they are opened; `hedging on` cannot change it. `three_deals`
+  needs a hedging account (Exness MT5 accounts are hedging by default).
+- **Partial closes are native.** A part of a position is closed by naming its
+  ticket, so no opening order is ever sent — not even to probe.
+- **The environment is verified.** `--env demo` on a real-money account, or
+  `--env live` on a demo one, is refused at connect.
+- **Exits are exact.** A position the broker closed while the bot was off is
+  journalled at its real closing price from the MT5 deal history, not an
+  estimate.
+- **The terminal is the connection.** If it closes or restarts, the bot
+  re-attaches on the next call; if it stays down, the bot degrades and keeps
+  retrying like any other API drop. The broker-side stop is always on the
+  position, so a dead terminal leaves the trade protected.
+- **Server time.** MT5 stamps bars and positions in the broker's server time;
+  `broker.mt5.server_utc_offset_hours` converts it (0 for Exness).
 
 ## Run
 
@@ -404,6 +461,8 @@ tmbot/
   broker/
     base.py            BrokerAdapter interface + PartialCloseStrategy
     capital.py         Capital.com REST: session, retry, re-auth, probe
+    mt5.py             MetaTrader 5 (Exness): terminal login, retcodes, native partials
+    factory.py         Picks the adapter from broker.platform
     paper.py           In-memory netting broker for tests and offline runs
   analysis/
     chart.py           Annotated plan charts, light/dark, Arabic-shaped

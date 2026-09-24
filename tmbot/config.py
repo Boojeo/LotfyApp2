@@ -33,8 +33,48 @@ class AccountCredentials:
 
 
 @dataclass
+class MT5Account:
+    """One MetaTrader 5 account (Exness or any other MT5 broker).
+
+    The number, password and server name are exactly what you type into the
+    MT5 login window. The password is the TRADING password, not the one for
+    the broker's website.
+    """
+
+    login: str = ""
+    password: str = ""
+    server: str = ""                 # e.g. Exness-MT5Trial8 -- shown at login
+    # Optional: the full path to terminal64.exe. Only needed when more than one
+    # MetaTrader 5 is installed, so the right one is started.
+    terminal_path: str = ""
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.login and self.password and self.server)
+
+
+@dataclass
+class MT5Config:
+    demo: MT5Account = field(default_factory=MT5Account)
+    live: MT5Account = field(default_factory=MT5Account)
+    # MT5 stamps positions and bars in the broker's server time, not UTC.
+    # Exness runs its servers on UTC, so 0 is right there; other brokers are
+    # often +2 or +3.
+    server_utc_offset_hours: float = 0.0
+    # How far (in points) the fill may slip from the quoted price on a close.
+    deviation_points: int = 30
+    # How long to wait for the terminal to start and log in.
+    connect_timeout_ms: int = 60000
+
+
+@dataclass
 class BrokerConfig:
     environment: str = ""            # "demo" | "live" -- required, never defaulted
+    # Which kind of broker connection to use:
+    #   capital -- Capital.com's REST API (the original setup)
+    #   mt5     -- a MetaTrader 5 terminal on this Windows PC (Exness, ...)
+    platform: str = "capital"
+    mt5: MT5Config = field(default_factory=MT5Config)
     # Flat fields are the shared fallback, so a single-account setup keeps
     # working untouched. Per-environment credentials override them.
     api_key: str = ""
@@ -65,6 +105,18 @@ class BrokerConfig:
             password=chosen.password or self.password,
             account_id=chosen.account_id or self.account_id,
         )
+
+    @property
+    def active_mt5(self) -> MT5Account:
+        """MetaTrader 5 login for the environment currently selected."""
+        return self.mt5.live if self.environment == "live" else self.mt5.demo
+
+    @property
+    def credentials_ready(self) -> bool:
+        """Whether the selected platform has a full login for this environment."""
+        if self.platform == "mt5":
+            return self.active_mt5.configured
+        return self.active.configured
 
     @property
     def base_url(self) -> str:
@@ -247,6 +299,21 @@ class Config:
     def resolved_report_dir(self) -> str:
         return self._per_environment(self.report.output_dir)
 
+    def canonical_epic(self, text: str) -> str:
+        """The instrument name as the broker spells it, from what was typed.
+
+        Capital.com epics are upper case. MetaTrader 5 names are
+        case-sensitive (Exness: XAUUSDm), so there the watchlist spelling wins
+        and anything else is passed through untouched.
+        """
+        text = text.strip()
+        if self.broker.platform != "mt5":
+            return text.upper()
+        for item in self.analysis.watchlist:
+            if item.epic.upper() == text.upper():
+                return item.epic
+        return text
+
     def epic_config(self, epic: str) -> EpicConfig:
         for item in self.analysis.watchlist:
             if item.epic.upper() == epic.upper():
@@ -264,15 +331,29 @@ class Config:
             raise ConfigError(
                 "broker.environment must be 'demo' or 'live' -- pass --env on the command line"
             )
+        if self.broker.platform not in ("capital", "mt5"):
+            raise ConfigError("broker.platform must be 'capital' or 'mt5'")
         environment = self.broker.environment.upper()
-        active = self.broker.active
-        missing = [
-            name for name, value in (
+        if self.broker.platform == "mt5":
+            login = self.broker.active_mt5
+            required = (
+                (f"MT5_{environment}_LOGIN", login.login),
+                (f"MT5_{environment}_PASSWORD", login.password),
+                (f"MT5_{environment}_SERVER", login.server),
+            )
+            if login.login and not str(login.login).strip().isdigit():
+                raise ConfigError(
+                    f"MT5_{environment}_LOGIN must be the account NUMBER shown in "
+                    f"MetaTrader 5, got {login.login!r}"
+                )
+        else:
+            active = self.broker.active
+            required = (
                 (f"CAPITAL_{environment}_API_KEY", active.api_key),
                 (f"CAPITAL_{environment}_IDENTIFIER", active.identifier),
                 (f"CAPITAL_{environment}_PASSWORD", active.password),
-            ) if not value
-        ]
+            )
+        missing = [name for name, value in required if not value]
         if missing and connecting:
             raise ConfigError(
                 f"no {self.broker.environment} credentials: set "
@@ -375,7 +456,8 @@ def _coerce(cls: Any, raw: Any) -> Any:
         elif key == "ladder":
             kwargs[key] = [LadderStep(**item) for item in value]
         elif key in ("demo", "live") and isinstance(value, dict):
-            kwargs[key] = AccountCredentials(**value)
+            account_cls = MT5Account if cls is MT5Config else AccountCredentials
+            kwargs[key] = account_cls(**{k: str(v) for k, v in value.items()})
         elif isinstance(value, dict) and isinstance(field_type, str) and field_type in _NESTED:
             kwargs[key] = _coerce(_NESTED[field_type], value)
         else:
@@ -386,6 +468,7 @@ def _coerce(cls: Any, raw: Any) -> Any:
 _NESTED = {
     "BrokerConfig": BrokerConfig,
     "AccountCredentials": AccountCredentials,
+    "MT5Config": MT5Config,
     "ManagementConfig": ManagementConfig,
     "ReversalConfig": ReversalConfig,
     "AnalysisConfig": AnalysisConfig,
@@ -424,6 +507,14 @@ def apply_env(config: Config) -> Config:
         account.identifier = env.get(f"{prefix}IDENTIFIER", account.identifier)
         account.password = env.get(f"{prefix}PASSWORD", account.password)
         account.account_id = env.get(f"{prefix}ACCOUNT_ID", account.account_id)
+
+    for name in ("demo", "live"):
+        login = getattr(config.broker.mt5, name)
+        prefix = f"MT5_{name.upper()}_"
+        login.login = env.get(f"{prefix}LOGIN", login.login).strip()
+        login.password = env.get(f"{prefix}PASSWORD", login.password)
+        login.server = env.get(f"{prefix}SERVER", login.server).strip()
+        login.terminal_path = env.get(f"{prefix}TERMINAL", login.terminal_path).strip()
 
     config.news.api_key = env.get("NEWS_API_KEY", config.news.api_key)
     config.llm.api_key = env.get("ANTHROPIC_API_KEY", config.llm.api_key)
