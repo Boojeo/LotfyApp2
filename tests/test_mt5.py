@@ -233,6 +233,22 @@ class ConnectionTests(unittest.TestCase):
         self.assertEqual([p.deal_id for p in broker.positions()], ["101"])
         self.assertEqual(len(fake.init_calls), 2, "re-initialised after the drop")
 
+    def test_switching_mt5_to_another_account_freezes_the_bot(self):
+        broker, fake = connected()
+        fake.seed(101)
+        fake.account.login = 7770001        # someone logged MT5 in elsewhere
+
+        for action in (broker.positions,
+                       lambda: broker.modify_position("101", stop_level=3400.0),
+                       lambda: broker.close_position("101")):
+            with self.assertRaises(RetryableError) as caught:
+                action()
+            self.assertIn("switched back to account 5550001", str(caught.exception))
+        self.assertEqual(fake.requests, [], "nothing may be sent to the wrong account")
+
+        fake.account.login = 5550001        # back on the right account
+        self.assertEqual([p.deal_id for p in broker.positions()], ["101"])
+
     def test_hedging_comes_from_the_account_margin_mode(self):
         self.assertTrue(connected()[0].hedging_mode())
         self.assertFalse(connected(FakeMT5(margin_mode=0))[0].hedging_mode())

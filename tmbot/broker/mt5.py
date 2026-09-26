@@ -537,7 +537,26 @@ class MT5Broker(BrokerAdapter):
             upl=float(_field(raw, "profit", 0.0) or 0.0),
         )
 
+    def _ensure_account(self) -> None:
+        """Refuse to act if someone switched the terminal to another account.
+
+        The terminal is shared with whoever is sitting at the PC. Logging it
+        in to another account (the live one, say) while the bot runs would
+        otherwise hand that account's trades to a bot journaling them as
+        this one's. Retryable, so the bot pauses and resumes by itself once
+        the terminal is back on the right account.
+        """
+        expected = int(str(self.config.active_mt5.login).strip())
+        actual = int(_field(self.account_info(), "login", 0) or 0)
+        if actual != expected:
+            raise RetryableError(
+                f"MetaTrader 5 is now logged in to account {actual or '(none)'}, "
+                f"not {expected}. No trade will be touched until MT5 is "
+                f"switched back to account {expected}"
+            )
+
     def positions(self) -> List[BrokerPosition]:
+        self._ensure_account()
         raw = self._call("positions", "positions_get", allow_empty=True) or ()
         return [self._to_position(item) for item in raw]
 
@@ -546,6 +565,7 @@ class MT5Broker(BrokerAdapter):
             ticket = int(deal_id)
         except (TypeError, ValueError):
             return None
+        self._ensure_account()
         raw = self._call(f"position {deal_id}", "positions_get", ticket=ticket, allow_empty=True)
         return raw[0] if raw else None
 
