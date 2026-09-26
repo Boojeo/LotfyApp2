@@ -151,6 +151,7 @@ class TradeEngine:
             self._record_local_state(trade, decision)
             return "dry-run"
 
+        before = trade.remaining_size
         if decision.kind is DecisionKind.SET_STOP:
             reference = self.broker.modify_position(
                 trade.deal_id, stop_level=decision.stop_level
@@ -164,7 +165,7 @@ class TradeEngine:
         else:  # pragma: no cover - the enum is exhaustive
             raise NotSupportedError(f"unhandled decision kind {decision.kind}")
 
-        self._record_local_state(trade, decision)
+        self._record_local_state(trade, decision, before=before)
         return reference
 
     @staticmethod
@@ -200,8 +201,15 @@ class TradeEngine:
         self.store.record_fill(fill)
         trade.realised = round(trade.realised + fill.r_multiple, 6)
 
-    def _record_local_state(self, trade: ManagedTrade, decision: Decision) -> None:
-        """Advance our own flags so the ladder cannot fire the same rung twice."""
+    def _record_local_state(
+        self, trade: ManagedTrade, decision: Decision, *, before: Optional[float] = None
+    ) -> None:
+        """Advance our own flags so the ladder cannot fire the same rung twice.
+
+        ``before`` is the size held before the order went out. A partial close
+        re-reads the position from the broker to verify it; when that already
+        updated the size, subtracting the partial again would count it twice.
+        """
         if decision.kind in (DecisionKind.PARTIAL_CLOSE, DecisionKind.CLOSE_ALL):
             self._record_fill(trade, decision)
         if decision.kind is DecisionKind.PARTIAL_CLOSE and decision.stage:
@@ -209,7 +217,11 @@ class TradeEngine:
                 trade.tp1_done = True
             elif decision.stage.value == "TP2":
                 trade.tp2_done = True
-            trade.remaining_size = max(0.0, round(trade.remaining_size - (decision.size or 0.0), 6))
+            already_synced = before is not None and abs(trade.remaining_size - before) > SIZE_TOLERANCE
+            if not already_synced:
+                trade.remaining_size = max(
+                    0.0, round(trade.remaining_size - (decision.size or 0.0), 6)
+                )
         elif decision.kind is DecisionKind.CLOSE_ALL:
             trade.remaining_size = 0.0
             trade.status = TradeStatus.CLOSED

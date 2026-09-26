@@ -122,6 +122,17 @@ class ExecutionTests(unittest.TestCase):
         self.assertIs(broker.partial_close_strategy, PartialCloseStrategy.UNSUPPORTED)
         self.assertTrue(any("whole position is gone" in text for _, text in notifier.messages))
 
+    def test_a_verified_partial_is_not_subtracted_twice(self):
+        broker, store, engine, _ = build()
+        broker.hedging = True
+        broker.partial_close_strategy = PartialCloseStrategy.DELETE_WITH_SIZE
+        managed = trade()
+
+        engine.apply(managed, evaluate(managed, snapshot(3410.0), management()))
+
+        self.assertEqual(broker.position("deal-000001").size, 0.5)
+        self.assertEqual(managed.remaining_size, 0.5, "half is left, not none")
+
     def test_dry_run_sends_nothing_but_advances_state(self):
         broker, store, engine, _ = build(dry_run=True)
         managed = trade()

@@ -429,6 +429,59 @@ class EngineOnMT5Tests(unittest.TestCase):
         self.assertEqual(fake.open[102].volume, 0.01, "leg 2 untouched in size")
 
 
+class NettingLadderTests(unittest.TestCase):
+    """One deal on a netting account, cut 50% / 25% / rest by the ladder."""
+
+    def build(self):
+        broker, fake = connected(FakeMT5(margin_mode=0))
+        probe = broker.probe_partial_close(needed=True)
+        self.assertFalse(probe.blocking, "partials must work on netting")
+        config = Config()
+        config.management = management()   # partial_close ladder
+        engine = TradeEngine(broker, Store(":memory:"), config, NullNotifier())
+        return broker, fake, engine
+
+    def step(self, broker, engine, managed, price):
+        rules = broker.market_rules("XAUUSDm")
+        engine.apply(managed, evaluate(managed, snapshot(price, rules=rules),
+                                       engine.config.management))
+
+    def test_tp1_closes_half_by_ticket_and_moves_the_stop_to_entry(self):
+        broker, fake, engine = self.build()
+        fake.seed(101, volume=0.04, price=3400.0, sl=3390.0)
+        managed = trade(deal_id="101", epic="XAUUSDm", size=0.04)
+
+        self.step(broker, engine, managed, 3410.0)
+
+        self.assertAlmostEqual(fake.open[101].volume, 0.02, msg="half closed at TP1")
+        self.assertEqual(fake.open[101].sl, 3400.0, "rest is risk-free")
+        self.assertTrue(managed.tp1_done)
+        closes = [r for r in fake.requests if r["action"] == 1]
+        self.assertEqual([(r["position"], r["volume"]) for r in closes], [(101, 0.02)])
+
+    def test_tp2_takes_a_quarter_and_the_runner_is_left(self):
+        broker, fake, engine = self.build()
+        fake.seed(101, volume=0.04, price=3400.0, sl=3390.0)
+        managed = trade(deal_id="101", epic="XAUUSDm", size=0.04)
+
+        self.step(broker, engine, managed, 3410.0)
+        self.step(broker, engine, managed, 3420.0)
+
+        self.assertAlmostEqual(fake.open[101].volume, 0.01, msg="runner rides to TP3")
+        self.assertTrue(managed.tp2_done)
+
+    def test_a_minimum_size_deal_cannot_be_split_and_is_not_overclosed(self):
+        broker, fake, engine = self.build()
+        fake.seed(101, volume=0.01, price=3400.0, sl=3390.0)
+        managed = trade(deal_id="101", epic="XAUUSDm", size=0.01)
+
+        self.step(broker, engine, managed, 3410.0)
+
+        self.assertIn(101, fake.open, "0.01 cannot be halved; it must not be closed")
+        self.assertEqual(fake.open[101].volume, 0.01)
+        self.assertEqual(fake.open[101].sl, 3400.0, "break-even still applies")
+
+
 class ConfigTests(unittest.TestCase):
     def test_platform_defaults_to_capital(self):
         self.assertEqual(Config().broker.platform, "capital")
