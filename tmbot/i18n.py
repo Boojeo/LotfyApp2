@@ -75,8 +75,9 @@ class Translator:
             f"term.{group}.{str(value).lower()}" in CATALOG
         ) else str(value)
 
-    def direction_name(self, value: Any, *, arrow: bool = True) -> str:
-        return self._arrowed("direction", getattr(value, "value", value), arrow)
+    def direction_name(self, value: Any) -> str:
+        # Deal types stay plain words; arrows belong to the analysis only.
+        return self.term("direction", getattr(value, "value", value))
 
     def bias_name(self, value: Any, *, arrow: bool = True) -> str:
         return self._arrowed("bias", getattr(value, "value", value), arrow)
@@ -102,12 +103,10 @@ class Translator:
         return "؛ " if self.is_rtl else "; "
 
 
-# Up for buying/bullish, down for selling/bearish. Neutral gets a flat dash,
-# not a sideways arrow: an arrow there reads as a direction it is not.
+# Analysis bias only: up for bullish, down for bearish. Neutral gets a flat
+# dash, not a sideways arrow: an arrow there reads as a direction it is not.
 ARROWS = {
-    "buy": "\u2b06\ufe0f",
     "bullish": "\u2b06\ufe0f",
-    "sell": "\u2b07\ufe0f",
     "bearish": "\u2b07\ufe0f",
     "neutral": "\u2796",
 }
