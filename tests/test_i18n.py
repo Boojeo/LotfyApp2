@@ -59,7 +59,7 @@ class TermTests(unittest.TestCase):
 
     def test_direction_and_bias_lead_with_an_arrow(self):
         en, ar = Translator("en"), Translator("ar")
-        up, down, side = "\u2b06\ufe0f", "\u2b07\ufe0f", "\u2194\ufe0f"
+        up, down, side = "\u2b06\ufe0f", "\u2b07\ufe0f", "\u2796"
         self.assertEqual(en.direction_name(Direction.BUY), f"{up} BUY")
         self.assertEqual(en.direction_name(Direction.SELL), f"{down} SELL")
         self.assertEqual(en.bias_name(Bias.BULLISH), f"{up} BULLISH")

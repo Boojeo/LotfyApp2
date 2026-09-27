@@ -102,13 +102,14 @@ class Translator:
         return "؛ " if self.is_rtl else "; "
 
 
-# Up for buying/bullish, down for selling/bearish, sideways for neutral.
+# Up for buying/bullish, down for selling/bearish. Neutral gets a flat dash,
+# not a sideways arrow: an arrow there reads as a direction it is not.
 ARROWS = {
     "buy": "\u2b06\ufe0f",
     "bullish": "\u2b06\ufe0f",
     "sell": "\u2b07\ufe0f",
     "bearish": "\u2b07\ufe0f",
-    "neutral": "\u2194\ufe0f",
+    "neutral": "\u2796",
 }
 
 
