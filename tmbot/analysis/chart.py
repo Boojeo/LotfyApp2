@@ -224,7 +224,7 @@ def render(
     axes.set_xticklabels([window[i].ts.strftime(stamp) for i in ticks])
 
     axes.set_title(
-        label(t("chart.title", epic=plan.epic, bias=t.bias_name(plan.bias),
+        label(t("chart.title", epic=plan.epic, bias=t.bias_name(plan.bias, arrow=False),
                 confidence=f"{plan.confidence:.0f}")),
         color=palette.ink, fontsize=13, fontweight="bold", loc="left", pad=14,
     )

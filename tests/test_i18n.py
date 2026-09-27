@@ -51,11 +51,21 @@ class BidiTests(unittest.TestCase):
 class TermTests(unittest.TestCase):
     def test_stored_enum_values_translate_for_display_only(self):
         ar = Translator("ar")
-        self.assertEqual(ar.direction_name(Direction.BUY), "شراء")
-        self.assertEqual(ar.bias_name(Bias.BEARISH), "هابط")
+        self.assertEqual(ar.direction_name(Direction.BUY, arrow=False), "شراء")
+        self.assertEqual(ar.bias_name(Bias.BEARISH, arrow=False), "هابط")
         self.assertEqual(ar.strength_name(TrendStrength.STRONG), "قوي")
         # The enum itself is untouched -- this is what goes to SQLite.
         self.assertEqual(Direction.BUY.value, "BUY")
+
+    def test_direction_and_bias_lead_with_an_arrow(self):
+        en, ar = Translator("en"), Translator("ar")
+        up, down, side = "\u2b06\ufe0f", "\u2b07\ufe0f", "\u2194\ufe0f"
+        self.assertEqual(en.direction_name(Direction.BUY), f"{up} BUY")
+        self.assertEqual(en.direction_name(Direction.SELL), f"{down} SELL")
+        self.assertEqual(en.bias_name(Bias.BULLISH), f"{up} BULLISH")
+        self.assertEqual(en.bias_name(Bias.NEUTRAL), f"{side} NEUTRAL")
+        self.assertEqual(ar.bias_name(Bias.BEARISH), f"{down} هابط")
+        self.assertEqual(en.bias_name("", arrow=True), "", "unknown values get no arrow")
 
     def test_an_unknown_term_falls_back_to_the_raw_value(self):
         self.assertEqual(Translator("ar").term("direction", "SIDEWAYS"), "SIDEWAYS")

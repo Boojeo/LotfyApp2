@@ -75,11 +75,20 @@ class Translator:
             f"term.{group}.{str(value).lower()}" in CATALOG
         ) else str(value)
 
-    def direction_name(self, value: Any) -> str:
-        return self.term("direction", getattr(value, "value", value))
+    def direction_name(self, value: Any, *, arrow: bool = True) -> str:
+        return self._arrowed("direction", getattr(value, "value", value), arrow)
 
-    def bias_name(self, value: Any) -> str:
-        return self.term("bias", getattr(value, "value", value))
+    def bias_name(self, value: Any, *, arrow: bool = True) -> str:
+        return self._arrowed("bias", getattr(value, "value", value), arrow)
+
+    def _arrowed(self, group: str, value: Any, arrow: bool) -> str:
+        """The translated word, led by an up/down arrow so it reads at a glance.
+
+        Pass arrow=False where emoji cannot be drawn (chart images).
+        """
+        name = self.term(group, value)
+        mark = ARROWS.get(str(value).lower()) if arrow else None
+        return f"{mark} {name}" if mark else name
 
     def strength_name(self, value: Any) -> str:
         return self.term("strength", getattr(value, "value", value))
@@ -91,6 +100,16 @@ class Translator:
     @property
     def semicolon(self) -> str:
         return "؛ " if self.is_rtl else "; "
+
+
+# Up for buying/bullish, down for selling/bearish, sideways for neutral.
+ARROWS = {
+    "buy": "\u2b06\ufe0f",
+    "bullish": "\u2b06\ufe0f",
+    "sell": "\u2b07\ufe0f",
+    "bearish": "\u2b07\ufe0f",
+    "neutral": "\u2194\ufe0f",
+}
 
 
 # ---------------------------------------------------------------------------

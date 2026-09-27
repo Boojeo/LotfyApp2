@@ -212,6 +212,13 @@ def _mt5_doctor(config: Config) -> int:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    # Reports carry arrows (and Arabic); a Windows console redirected to a
+    # file may not be able to encode them, which must not crash a command.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     args = build_parser().parse_args(argv)
     try:
         config = _load_config(args)
