@@ -164,6 +164,10 @@ class MarketRules:
     min_stop_distance: float = 0.0
     min_stop_distance_is_pct: bool = False
     tradeable: bool = True
+    # Account-currency value of a 1.0 price move on 1 lot. Lets a report say
+    # how many lots keep a stop-out to a chosen share of the balance. None
+    # when the broker does not publish it.
+    value_per_point: Optional[float] = None
 
     def round_price(self, price: float) -> float:
         return round(price, self.decimal_places)
@@ -298,6 +302,15 @@ class TradePlan:
     narrative: str = ""
     advisory_only: bool = False
     plan_id: str = ""
+    # Which trade style the levels were built for (name, charts, typical
+    # hours, and why it was chosen). Empty for plans from before styles.
+    style: Dict[str, Any] = field(default_factory=dict)
+    # Lot-size advice for the stop in this plan; empty when unavailable.
+    sizing: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def management_timeframe(self) -> str:
+        return str(self.style.get("management") or "")
 
     @property
     def targets(self) -> List[float]:
@@ -336,6 +349,8 @@ class TradePlan:
             narrative=self.narrative,
             advisory_only=self.advisory_only,
             plan_id=self.plan_id,
+            style=dict(self.style),
+            sizing=dict(self.sizing),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -358,6 +373,8 @@ class TradePlan:
             "headlines": self.headlines,
             "narrative": self.narrative,
             "advisory_only": self.advisory_only,
+            "style": self.style,
+            "sizing": self.sizing,
         }
 
     @classmethod
@@ -381,6 +398,8 @@ class TradePlan:
             narrative=raw.get("narrative", ""),
             advisory_only=bool(raw.get("advisory_only", False)),
             plan_id=raw.get("plan_id", ""),
+            style=raw.get("style") or {},
+            sizing=raw.get("sizing") or {},
         )
 
 
@@ -483,6 +502,10 @@ class ManagedTrade:
     closed_at: Optional[datetime] = None
     realised: float = 0.0
     note: str = ""
+    # The chart this trade is managed on, fixed when it is adopted so a later
+    # analysis choosing another style cannot change how a running trade is
+    # trailed. Empty means the configured default.
+    management_timeframe: str = ""
 
     @property
     def short_id(self) -> str:
@@ -546,6 +569,7 @@ class ManagedTrade:
             "closed_at": _iso(self.closed_at),
             "realised": self.realised,
             "note": self.note,
+            "management_timeframe": self.management_timeframe,
         }
 
     @classmethod
@@ -582,6 +606,7 @@ class ManagedTrade:
             closed_at=_parse_dt(raw.get("closed_at")),
             realised=float(raw.get("realised", 0.0)),
             note=raw.get("note", ""),
+            management_timeframe=raw.get("management_timeframe", ""),
         )
 
     @property
@@ -619,6 +644,7 @@ class ManagedTrade:
             stop_level=position.stop_level,
             best_price=position.entry_price,
             opened_at=position.created_at,
+            management_timeframe=plan.management_timeframe,
         )
 
 

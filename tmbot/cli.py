@@ -446,6 +446,22 @@ def main(argv: Optional[List[str]] = None) -> int:
             if not watchlist:
                 print("  (empty -- reports and plans have nothing to work on)")
             analysis = config.analysis
+            if config.style.mode == "auto":
+                from .config import STYLE_PROFILES
+                print("trade style   AUTOMATIC per instrument, chosen from:")
+                for name in STYLE_PROFILES:
+                    if name in config.style.allowed:
+                        profile = STYLE_PROFILES[name]
+                        print(f"              {name:<9} ~{profile.hours} h: structure "
+                              f"{profile.structure_timeframe}, levels "
+                              f"{profile.entry_timeframe}, managed on "
+                              f"{profile.management_timeframe}")
+                print(f"              steps up to intraday when its chart has ADX >= "
+                      f"{config.style.intraday_min_adx:g} in the same direction")
+                print("              (the timeframes below are then not used)")
+            if config.report.risk_percent > 0:
+                print(f"lot size      reports suggest lots for "
+                      f"{config.report.risk_percent:g}% risk of your balance")
             print(f"analysis      structure on {analysis.structure_timeframe}, "
                   f"levels and bias on {analysis.entry_timeframe}, "
                   f"ATR({analysis.atr_period})")

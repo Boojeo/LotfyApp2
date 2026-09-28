@@ -20,7 +20,8 @@ def first(evaluation, kind):
 
 class LadderTests(unittest.TestCase):
     def test_nothing_happens_before_tp1(self):
-        result = evaluate(trade(), snapshot(3405.0), management())
+        # Short of halfway: past it the halfway stop moves (test_risk_cut.py).
+        result = evaluate(trade(), snapshot(3404.0), management())
         self.assertEqual(result.decisions, [])
 
     def test_tp1_closes_half_and_moves_stop_to_entry(self):
@@ -115,7 +116,8 @@ class ShortSideTests(unittest.TestCase):
 
 class TrailingTests(unittest.TestCase):
     def test_no_trail_until_the_configured_stage(self):
-        result = evaluate(trade(), snapshot(3405.0), management(trail_after_stage="TP1"))
+        result = evaluate(trade(), snapshot(3405.0),
+                          management(trail_after_stage="TP1", risk_cut_at=0))
         self.assertEqual(result.decisions, [])
 
     def test_chandelier_uses_the_strong_trend_multiple(self):

@@ -154,6 +154,12 @@ class ManagementConfig:
     )
     breakeven_stage: str = "TP1"
     breakeven_offset_r: float = 0.0   # 0.0 == stop sits exactly on the entry price
+    # Halfway stop: the stop is fixed from entry until TP1, which is where
+    # every loss happens. Once price has covered `risk_cut_at` of the way to
+    # TP1, the stop is pulled in so only `risk_cut_to` of the original risk is
+    # left (0.5 / 0.5: halfway there, half the risk). 0 turns it off.
+    risk_cut_at: float = 0.5
+    risk_cut_to: float = 0.5
     trail_after_stage: str = "TP1"    # TP1 | TP2 | ENTRY | NEVER
     trail_atr_period: int = 14
     trail_k_strong: float = 2.5
@@ -222,6 +228,44 @@ class AnalysisConfig:
     news_limit: int = 12
 
 
+@dataclass(frozen=True)
+class StyleProfile:
+    """One trade style: the charts it reads and how long its trades last."""
+
+    name: str
+    structure_timeframe: str   # big-picture support/resistance
+    entry_timeframe: str       # bias, targets and stop
+    management_timeframe: str  # trailing and reversal once in the trade
+    hours: str                 # typical holding time, for the report
+
+
+# Fastest first: the order the automatic choice climbs through.
+STYLE_PROFILES: Dict[str, StyleProfile] = {
+    "scalp": StyleProfile("scalp", "H1", "M15", "M5", "1-5"),
+    "intraday": StyleProfile("intraday", "H4", "H1", "M15", "5-24"),
+    "swing": StyleProfile("swing", "D1", "H4", "H1", "24-120"),
+}
+
+
+@dataclass
+class StyleConfig:
+    """How long trades are planned for.
+
+    fixed -- every instrument uses the analysis.* and management timeframes.
+    auto  -- per instrument and per analysis, the bot picks the fastest
+             allowed style, and steps up to a slower one only when that
+             slower chart has a strong trend pointing the same way. A slower
+             style means wider targets AND a wider stop, which the report's
+             lot-size line compensates for.
+    """
+
+    mode: str = "fixed"
+    allowed: List[str] = field(default_factory=lambda: ["scalp", "intraday"])
+    # ADX on the slower style's own chart needed to step up to it.
+    intraday_min_adx: float = 25.0
+    swing_min_adx: float = 30.0
+
+
 @dataclass
 class NewsConfig:
     provider: str = "none"   # marketaux | finnhub | none
@@ -259,6 +303,10 @@ class ReportConfig:
     chart_theme: str = "dark"        # light | dark
     chart_timeframe: str = "H1"
     chart_bars: int = 120
+    # Lot-size line in every report: how many lots keep a stop-out to this
+    # share of the balance. 0 turns the line off. The bot never opens trades;
+    # this is advice for the deal you place yourself.
+    risk_percent: float = 1.0
 
 
 @dataclass
@@ -267,6 +315,7 @@ class Config:
     management: ManagementConfig = field(default_factory=ManagementConfig)
     reversal: ReversalConfig = field(default_factory=ReversalConfig)
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
+    style: StyleConfig = field(default_factory=StyleConfig)
     news: NewsConfig = field(default_factory=NewsConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
@@ -407,6 +456,24 @@ class Config:
             raise ConfigError(
                 f"language must be one of {', '.join(LANGUAGES)}, got {self.language!r}"
             )
+        management = self.management
+        if management.risk_cut_at and not (
+            0 < management.risk_cut_at < 1 and 0 <= management.risk_cut_to < 1
+        ):
+            raise ConfigError(
+                "management.risk_cut_at must be between 0 and 1 (0 turns the "
+                "halfway stop off) and risk_cut_to between 0 and 1"
+            )
+        if self.style.mode not in ("fixed", "auto"):
+            raise ConfigError("style.mode must be 'fixed' or 'auto'")
+        unknown = [name for name in self.style.allowed if name not in STYLE_PROFILES]
+        if unknown or not self.style.allowed:
+            raise ConfigError(
+                f"style.allowed must list some of {', '.join(STYLE_PROFILES)}"
+                + (f"; unknown: {', '.join(unknown)}" if unknown else "")
+            )
+        if not 0 <= self.report.risk_percent <= 10:
+            raise ConfigError("report.risk_percent must be between 0 and 10")
         if self.management.on_indivisible_size not in ("hold", "close_all"):
             raise ConfigError("management.on_indivisible_size must be 'hold' or 'close_all'")
 
@@ -476,6 +543,7 @@ _NESTED = {
     "LLMConfig": LLMConfig,
     "TelegramConfig": TelegramConfig,
     "ReportConfig": ReportConfig,
+    "StyleConfig": StyleConfig,
 }
 
 

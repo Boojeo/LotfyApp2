@@ -126,6 +126,41 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "term.strength.strong": {"en": "STRONG", "ar": "قوي"},
     "term.strength.moderate": {"en": "MODERATE", "ar": "متوسط"},
     "term.strength.weak": {"en": "WEAK", "ar": "ضعيف"},
+    "term.style.scalp": {"en": "Scalp", "ar": "سكالبينج"},
+    "term.style.intraday": {"en": "Intraday", "ar": "تداول يومي"},
+    "term.style.swing": {"en": "Swing", "ar": "سوينج"},
+
+    # ---------------------------------------------------------------- trade style
+    "style.why_fixed": {
+        "en": "Timeframes are fixed in the settings.",
+        "ar": "الأطر الزمنية ثابتة في الإعدادات.",
+    },
+    "style.why_only": {
+        "en": "Only one style is allowed.",
+        "ar": "نمط واحد فقط مسموح به.",
+    },
+    "style.why_trend": {
+        "en": "Why: {slow} has a strong trend (ADX {adx}, needs {min}) in the same "
+              "direction as {fast}, so targets get more room.",
+        "ar": "السبب: يوجد اتجاه قوي على {slow} (ADX {adx}، المطلوب {min}) في نفس "
+              "اتجاه {fast}، لذلك أُعطيت الأهداف مساحة أكبر.",
+    },
+    "style.why_no_trend": {
+        "en": "Why: no strong trend on {slow} (ADX {adx}, needs {min}), so the "
+              "targets stay quick.",
+        "ar": "السبب: لا يوجد اتجاه قوي على {slow} (ADX {adx}، المطلوب {min})، "
+              "لذلك تبقى الأهداف قريبة وسريعة.",
+    },
+    "style.why_disagree": {
+        "en": "Why: {slow} does not point the same way as {fast}, so the targets "
+              "stay quick.",
+        "ar": "السبب: اتجاه {slow} لا يتفق مع اتجاه {fast}، لذلك تبقى الأهداف "
+              "قريبة وسريعة.",
+    },
+    "style.why_no_data": {
+        "en": "Why: not enough {slow} history to judge a longer trade.",
+        "ar": "السبب: لا توجد بيانات كافية على {slow} للحكم على صفقة أطول.",
+    },
 
     # ---------------------------------------------------------------- startup
     "startup.online": {
@@ -338,6 +373,11 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "reason.breakeven": {
         "en": "{stage} reached -- stop to entry {level}",
         "ar": "تم بلوغ {stage} — نقل الوقف إلى سعر الدخول {level}",
+    },
+    "reason.risk_cut": {
+        "en": "{progress} of the way to TP1 -- risk cut to {left}, stop moved to {level}",
+        "ar": "قطع السعر {progress} من الطريق إلى الهدف الأول — خُفّضت المخاطرة "
+              "إلى {left} ونُقل الوقف إلى {level}",
     },
     "reason.indivisible": {
         "en": "{stage} hit and the remainder would be below the minimum deal size",
@@ -632,6 +672,26 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "report.reference": {
         "en": "Reference price {price} | ATR {atr} | risk to stop {risk}",
         "ar": "السعر المرجعي {price} | متوسط المدى الحقيقي {atr} | المخاطرة حتى الوقف {risk}",
+    },
+    "report.style": {
+        "en": "Style: {style} (about {hours} h) | levels {entry}, structure "
+              "{structure}, managed on {management}",
+        "ar": "النمط: {style} (حوالي {hours} ساعة) | المستويات {entry}، الهيكل "
+              "{structure}، الإدارة على {management}",
+    },
+    "report.sizing": {
+        "en": "Lot size for {percent}% risk ({money} {currency}): {lots} lots "
+              "per deal x {deals}",
+        "ar": "حجم اللوت لمخاطرة {percent}% ({money} {currency}): {lots} لوت "
+              "لكل صفقة × {deals}",
+    },
+    "report.sizing_min": {
+        "en": "Lot size: even the minimum {lots} lots per deal x {deals} risks "
+              "{actual_percent}% ({actual_money} {currency}), more than your "
+              "{percent}% -- consider skipping or trading fewer deals",
+        "ar": "حجم اللوت: حتى الحد الأدنى {lots} لوت لكل صفقة × {deals} يخاطر "
+              "بـ {actual_percent}% ({actual_money} {currency})، أكثر من "
+              "{percent}% المحددة -- فكّر في تخطي الصفقة أو تقليل عدد الصفقات",
     },
     "report.levels_heading": {"en": "Levels", "ar": "المستويات"},
     "report.col_level": {"en": "Level", "ar": "المستوى"},

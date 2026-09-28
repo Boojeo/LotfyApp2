@@ -435,6 +435,13 @@ class MT5Broker(BrokerAdapter):
         )
         mode = int(_field(info, "trade_mode", 4))
         step = float(_field(info, "volume_step", 0.0) or 0.0)
+        # What one tick is worth on 1 lot, in the account currency. MT5 quotes
+        # a separate figure for a losing move, which is the one a stop costs.
+        tick_size = float(_field(info, "trade_tick_size", 0.0) or 0.0)
+        tick_value = float(
+            _field(info, "trade_tick_value_loss", 0.0)
+            or _field(info, "trade_tick_value", 0.0) or 0.0
+        )
         rules = MarketRules(
             epic=epic,
             name=str(_field(info, "description", "") or epic),
@@ -444,6 +451,7 @@ class MT5Broker(BrokerAdapter):
             min_stop_distance=levels * point,
             min_stop_distance_is_pct=False,
             tradeable=mode != SYMBOL_TRADE_MODE_DISABLED,
+            value_per_point=(tick_value / tick_size) if tick_size > 0 and tick_value > 0 else None,
         )
         self._rules_cache[epic] = rules
         return rules

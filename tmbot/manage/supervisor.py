@@ -191,6 +191,12 @@ class Supervisor:
             # A leg arriving after its basket was already confirmed is adopted
             # on the same decision rather than asking again.
             siblings = self.store.trades_in_group(group_id)
+            # One basket, one management chart -- even if the analysis picked
+            # a different style between the first deal and this one.
+            for leg in siblings:
+                if leg.management_timeframe:
+                    trade.management_timeframe = leg.management_timeframe
+                    break
             if any(leg.status is TradeStatus.MANAGING for leg in siblings):
                 trade.status = TradeStatus.MANAGING
                 self.store.save_trade(trade)
@@ -269,6 +275,13 @@ class Supervisor:
             self.t("adoption.levels", sl=trade.sl, tp1=trade.tp1,
                    tp2=trade.tp2, tp3=trade.tp3),
         ]
+        if plan.style.get("automatic"):
+            parts.append(self.t(
+                "report.style", style=self.t.term("style", plan.style.get("name", "")),
+                hours=plan.style.get("hours", ""), entry=plan.style.get("entry", ""),
+                structure=plan.style.get("structure", ""),
+                management=trade.management_timeframe or plan.style.get("management", ""),
+            ))
 
         rules = self.t("adoption.plan_rules",
                        breakeven=management.breakeven_stage,
@@ -445,7 +458,7 @@ class Supervisor:
                 trade.stop_level = position.stop_level
 
             try:
-                snapshot = self._snapshot(trade.epic)
+                snapshot = self._snapshot(trade.epic, trade.management_timeframe)
             except (RetryableError, StaleDataError) as exc:
                 log.warning("%s: no usable market data (%s); skipping this cycle", trade.epic, exc)
                 continue
@@ -634,9 +647,14 @@ class Supervisor:
 
     # ------------------------------------------------------------------ snapshots
 
-    def _snapshot(self, epic: str) -> MarketSnapshot:
+    def _snapshot(self, epic: str, timeframe: str = "") -> MarketSnapshot:
+        """Market state on the chart a trade is managed on.
+
+        Each trade keeps the chart of the style it was entered under; older
+        trades without one use the configured default.
+        """
         management = self.config.management
-        timeframe = management.management_timeframe
+        timeframe = timeframe or management.management_timeframe
         try:
             quote = self.broker.quote(epic)
             self._quotes[epic] = quote
@@ -797,8 +815,13 @@ class Supervisor:
         if not report.charts:
             return None
         try:
+            # An automatically chosen style is drawn on the chart its levels
+            # came from, so the picture matches the numbers.
+            timeframe = (
+                plan.style.get("entry") if plan.style.get("automatic") else None
+            ) or report.chart_timeframe
             candles = self._cached_candles(
-                plan.epic, report.chart_timeframe, max(report.chart_bars * 2, 200)
+                plan.epic, timeframe, max(report.chart_bars * 2, 200)
             )
             directory = Path(self.config.resolved_report_dir)
             path = directory / f"{plan.epic}-{plan.created_at:%Y%m%d-%H%M}.png"

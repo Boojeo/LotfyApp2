@@ -72,6 +72,12 @@ management:
   breakeven_stage: TP1
   breakeven_offset_r: 0.0
 
+  # Halfway stop: once price has covered risk_cut_at of the way to TP1, the
+  # stop is pulled in so only risk_cut_to of the original risk is left.
+  # 0.5 / 0.5 = halfway to TP1, half the risk. risk_cut_at: 0 turns it off.
+  risk_cut_at: 0.5
+  risk_cut_to: 0.5
+
   # ATR chandelier with a market-structure floor, active once TP1 is banked.
   # In three_deals mode only the final leg is trailed -- the others have their
   # own targets and must not be trailed out of them.
@@ -131,6 +137,22 @@ analysis:
   min_reward_risk: 0.8
   news_lookback_hours: 24
 
+# How long trades are planned for.
+#   fixed  every instrument uses the timeframes above (structure/entry) and
+#          management.management_timeframe.
+#   auto   per instrument, at every analysis, the bot picks a style:
+#            scalp     ~1-5 h   structure H1, levels M15, managed on M5
+#            intraday  ~5-24 h  structure H4, levels H1,  managed on M15
+#            swing     ~1-5 d   structure D1, levels H4,  managed on H1
+#          It starts from the fastest allowed style and steps up only when
+#          the slower chart has a strong trend (ADX) pointing the same way.
+#          A trade keeps the style it was entered under until it closes.
+style:
+  mode: fixed
+  allowed: [scalp, intraday]
+  intraday_min_adx: 25
+  swing_min_adx: 30
+
 news:
   provider: none                  # marketaux | finnhub | none
 
@@ -157,3 +179,8 @@ report:
   chart_theme: dark          # light | dark
   chart_timeframe: H1
   chart_bars: 120
+
+  # Every report suggests a lot size per deal that loses this share of your
+  # balance if the stop is hit (wider stop -> fewer lots). 0 turns it off.
+  # Needs a broker that publishes contract values (MetaTrader 5 does).
+  risk_percent: 1.0

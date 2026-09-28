@@ -287,6 +287,33 @@ def evaluate(
             f"{config.breakeven_stage} reached -- stop to entry {level}",
         ))
 
+    # ---------------------------------------------------------------- halfway stop
+    # Between entry and TP1 the stop would otherwise sit still, and that is
+    # where every loss is made. Part-way to TP1, keep only part of the risk.
+    # Once, and only ever tighter: the shared ranking below drops it if the
+    # stop is already at least this close.
+    if (
+        config.risk_cut_at > 0
+        and not trade.breakeven_done
+        and not breakeven_due
+        and trade.initial_risk > 0
+        and remaining > 0
+    ):
+        trigger = trade.entry_price + direction.sign * config.risk_cut_at * abs(
+            trade.tp1 - trade.entry_price
+        )
+        if direction.is_beyond(price, trigger):
+            level = round_price(
+                trade.entry_price - direction.sign * config.risk_cut_to * trade.initial_risk
+            )
+            left = f"{config.risk_cut_to:.0%}"
+            stop_candidates.append((
+                level, "risk_cut", "reason.risk_cut",
+                {"progress": f"{config.risk_cut_at:.0%}", "left": left, "level": level},
+                f"{config.risk_cut_at:.0%} of the way to TP1 -- risk cut to {left}, "
+                f"stop {level}",
+            ))
+
     # ---------------------------------------------------------------- final target
     # In three-deal mode every other leg has its own exit and must not be
     # dragged to TP3 or trailed out of its target.

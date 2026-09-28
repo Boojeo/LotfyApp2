@@ -302,6 +302,16 @@ rejected the trade still gets de-risked. The stop goes to the entry price
 exactly (`breakeven_offset_r: 0.0`). In `three_deals` mode every leg still open
 moves, so once TP1 trades the whole basket is risk-free.
 
+### Halfway stop
+
+Between entry and TP1 the stop would otherwise not move, and that is where
+every loss is made. Once price has covered `risk_cut_at` of the way to TP1
+(default half), the stop is pulled in so only `risk_cut_to` of the original
+risk is left (default half): risking 10 points, price gets 5 of the way to
+TP1 and turns — you lose 5, not 10. It happens once, only ever tightens, and
+break-even at TP1 takes over from there. The trade-off: a trade that dips back
+before going on to TP1 can now be stopped out for a small loss.
+
 ### Trend reversal failsafe
 
 Four independent signals, checked on every cycle: a DI cross, a close beyond the
@@ -361,6 +371,35 @@ bar 14:00  HH 3438.2  ATR 6.1  ADX 31 (strong)  k=2.5
 bar 14:15  HH 3441.0  ADX 24 (cooling)   k=3.0
    chandelier 3422.7 < current SL        ->  hold 3423.0
 ```
+
+### Trade style: how long a trade is planned for
+
+With `style.mode: auto` the bot decides, per instrument and at every analysis,
+how long the trade should be planned for, and builds the stop and the three
+targets on the matching charts:
+
+| Style | Charts (structure / levels / managed on) | Typical hold |
+| --- | --- | --- |
+| scalp | H1 / M15 / M5 | 1–5 h |
+| intraday | H4 / H1 / M15 | 5–24 h |
+| swing | D1 / H4 / H1 | 1–5 days |
+
+The rule is fixed, not a guess: start from the fastest style in
+`style.allowed`, and step up to a slower one only when that slower chart has a
+strong trend (ADX at or above `intraday_min_adx` / `swing_min_adx`) pointing
+the same way as the faster one. A ranging or disagreeing slower chart keeps the
+trade quick. The report states the style and the reason.
+
+A trade keeps the style it was **entered** under until it closes — a later
+analysis picking another style never changes how a running trade is trailed.
+The three deals of a basket always share one management chart.
+
+**Lot size.** A slower style means wider targets *and* a wider stop. Every
+report therefore says how many lots per deal keep a stop-out to
+`report.risk_percent` of your balance (rounded down to the broker's lot step).
+If even the minimum lot risks more than that, the report says so with the real
+percentage. This is advice for the deal you place — the bot still never opens
+one.
 
 ### Partial closes on Capital.com
 
