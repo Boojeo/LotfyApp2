@@ -16,11 +16,17 @@ from datetime import date, datetime, time as time_of_day, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from ..analysis.bias import analyse as technical_read, trend_strength
+from ..analysis.bias import trend_strength
 from ..analysis.indicators import adx, atr, ema, last_two, last_value, macd, swing_points
 from ..analysis import chart as chart_module
 from ..analysis import journal as journal_module
-from ..analysis.report import ReportBuilder, render_markdown, render_text
+from ..analysis.report import (
+    ReportBuilder,
+    render_markdown,
+    render_text,
+    sizing_lines,
+    style_lines,
+)
 from ..broker.base import BrokerAdapter, PartialCloseStrategy
 from ..config import Config, resolve_timezone
 from ..errors import AuthError, RetryableError, StaleDataError
@@ -562,11 +568,15 @@ class Supervisor:
         return self.t(key, epic=trade.epic, id=trade.short_id)
 
     def now_command(self, argument: str) -> str:
-        """Live prices at the moment of asking -- nothing cached, no AI, no chart.
+        """A full analysis on live data at the moment of asking.
 
-        With a symbol: price, today's move, the trend right now, how far the
-        plan's levels are, and your open trades on it with live profit.
-        Without: one line per watchlist instrument.
+        Everything /report computes -- bias, trade style, TP1-3, stop, lot
+        size -- from fresh bars and a fresh quote, plus every indicator signal
+        and the nearest support and resistance. Only the slow parts are left
+        out (news, AI, chart), so it answers in seconds. The result is saved
+        as the current plan: a trade opened on these levels is managed on them.
+
+        Without a symbol: one line per watchlist instrument.
         """
         stamp = utcnow().astimezone(self._report_timezone())
         heading = self.t("now.heading", time=f"{stamp:%H:%M:%S}",
@@ -607,22 +617,56 @@ class Supervisor:
             "percent": change / today.open * 100.0 if today.open else 0.0,
         }
 
+    def _fresh_plan(self, epic: str) -> TradePlan:
+        """Analyse now, on live data, and keep it as the current plan."""
+        plan = self.reporter.build(epic, fundamentals=False)
+        self.store.save_plan(plan)
+        return plan
+
     def _now_line(self, epic: str) -> str:
         quote = self.broker.quote(epic)
         day = self._day_change(epic, quote.mid)
+        plan = self._fresh_plan(epic)
         return self.t(
             "now.line", epic=epic, bid=quote.bid, ask=quote.ask,
             change=f"{day['percent']:+.2f}%" if day else "-",
+            bias=self.t.bias_name(plan.bias), confidence=f"{plan.confidence:.0f}",
+            style=self.t.term("style", plan.style.get("name", "")) if plan.style else "",
         )
+
+    def _now_signals(self, plan: TradePlan) -> List[str]:
+        """Each indicator as an arrow: what is pushing the bias, and which way."""
+        technical = plan.technical
+        marks = []
+        for factor in technical.get("factors", []):
+            value = float(factor.get("value", 0.0))
+            arrow = "⬆️" if value > 0.15 else "⬇️" if value < -0.15 else "➖"
+            marks.append(f"{self.t.term('factor', factor.get('name', ''))} {arrow}")
+        lines = []
+        if marks:
+            timeframe = plan.style.get("entry", "") if plan.style else ""
+            lines.append(self.t("now.signals", timeframe=timeframe) + " " + " | ".join(marks))
+        lines.append(self.t(
+            "now.readings", adx=f"{technical.get('adx', 0):.0f}",
+            strength=self.t.strength_name(technical.get("strength", "")),
+            rsi=f"{technical.get('rsi', 0):.0f}",
+            zone=self.t(
+                "now.rsi_high" if technical.get("rsi", 50) >= 70
+                else "now.rsi_low" if technical.get("rsi", 50) <= 30
+                else "now.rsi_mid"
+            ),
+        ))
+        return lines
 
     def _now_detail(self, epic: str) -> str:
         quote = self.broker.quote(epic)
         rules = self.broker.market_rules(epic)
         digits = rules.decimal_places
+        price = quote.mid
         lines = [self.t("now.price", epic=epic, bid=quote.bid, ask=quote.ask,
                         spread=f"{quote.spread:.{digits}f}")]
 
-        day = self._day_change(epic, quote.mid)
+        day = self._day_change(epic, price)
         if day:
             lines.append(self.t(
                 "now.day", open=f"{day['open']:.{digits}f}",
@@ -630,33 +674,32 @@ class Supervisor:
                 high=f"{day['high']:.{digits}f}", low=f"{day['low']:.{digits}f}",
             ))
 
-        plan = self.store.latest_plan(epic, max_age_hours=24)
-        timeframe = (plan.style.get("entry") if plan and plan.style else None) or (
-            self.config.analysis.entry_timeframe
+        plan = self._fresh_plan(epic)
+
+        def gap(level: float) -> str:
+            return f"{level} ({level - price:+.{digits}f})"
+
+        lines += ["", self.t("now.analysis")]
+        lines.append(
+            self.t("report.bias", bias=self.t.bias_name(plan.bias),
+                   confidence=f"{plan.confidence:.0f}")
+            + (self.t("report.advisory_tag") if plan.advisory_only else "")
         )
-        bars = self.broker.candles(epic, timeframe, 250)
-        if len(bars) >= 60:
-            read = technical_read(bars, self.config.analysis,
-                                  management=self.config.management)
+        lines += style_lines(plan, self.t)
+        lines.append(self.t("now.levels", tp1=gap(plan.tp1), tp2=gap(plan.tp2),
+                            tp3=gap(plan.tp3), sl=gap(plan.sl)))
+        lines += sizing_lines(plan, self.t)
+
+        lines.append("")
+        lines += self._now_signals(plan)
+        below = [level.price for level in plan.levels if level.price < price]
+        above = [level.price for level in plan.levels if level.price > price]
+        if below or above:
             lines.append(self.t(
-                "now.trend", timeframe=timeframe, bias=self.t.bias_name(read.bias),
-                adx=f"{read.adx:.0f}", strength=self.t.strength_name(read.strength),
-                rsi=f"{read.rsi:.0f}",
+                "now.nearest",
+                support=f"{max(below):.{digits}f}" if below else "-",
+                resistance=f"{min(above):.{digits}f}" if above else "-",
             ))
-
-        if plan:
-            made = plan.created_at.astimezone(self._report_timezone())
-            price = quote.mid
-
-            def gap(level: float) -> str:
-                return f"{level} ({level - price:+.{digits}f})"
-
-            lines.append(self.t("now.plan", time=f"{made:%H:%M}",
-                                bias=self.t.bias_name(plan.bias)))
-            lines.append(self.t("now.levels", tp1=gap(plan.tp1), tp2=gap(plan.tp2),
-                                tp3=gap(plan.tp3), sl=gap(plan.sl)))
-        else:
-            lines.append(self.t("now.no_plan", epic=epic))
 
         trades = [trade for trade in self.store.active_trades() if trade.epic == epic]
         if trades:
@@ -674,6 +717,7 @@ class Supervisor:
                     money=f"{money:+,.2f}" if money is not None else "-",
                     sl=trade.stop_level if trade.stop_level is not None else "-",
                 ))
+        lines += ["", self.t("now.footer")]
         return "\n".join(lines)
 
     def _absorb_extremes(self, trade: ManagedTrade, snapshot: MarketSnapshot) -> None:

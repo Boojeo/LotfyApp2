@@ -243,9 +243,9 @@ automatically. Only the configured chat id is accepted — commands from anywher
 else are logged and dropped.
 
 ```
-/now [symbol]    live prices this second: bid/ask, today's move, trend now,
-                 distance to each plan level, open trades with live profit
-                 (no AI, no chart, nothing cached -- answers instantly)
+/now [symbol]    a full analysis on live prices this second: bias, style,
+                 TP1-3/SL with distance, lot size, every indicator signal,
+                 nearest support/resistance, open trades (no news/AI/chart)
 /status          open positions and ladder state
 /confirm <id>    start managing a detected position
 /decline <id>    leave a detected position alone

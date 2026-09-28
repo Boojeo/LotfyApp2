@@ -560,9 +560,34 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "ar": "مباشر {time} ({zone})",
     },
     "now.line": {
-        "en": "{epic}  {bid} / {ask}  today {change}",
-        "ar": "{epic}  {bid} / {ask}  اليوم {change}",
+        "en": "{epic}  {bid} / {ask}  today {change}  {bias} {confidence}/100  {style}",
+        "ar": "{epic}  {bid} / {ask}  اليوم {change}  {bias} {confidence}/100  {style}",
     },
+    "now.analysis": {"en": "ANALYSIS NOW", "ar": "التحليل الآن"},
+    "now.signals": {"en": "Signals ({timeframe}):", "ar": "الإشارات ({timeframe}):"},
+    "now.readings": {
+        "en": "ADX {adx} {strength} | RSI {rsi} {zone}",
+        "ar": "ADX {adx} {strength} | RSI {rsi} {zone}",
+    },
+    "now.rsi_high": {"en": "(overbought)", "ar": "(تشبع شرائي)"},
+    "now.rsi_low": {"en": "(oversold)", "ar": "(تشبع بيعي)"},
+    "now.rsi_mid": {"en": "(neutral)", "ar": "(محايد)"},
+    "now.nearest": {
+        "en": "Nearest support {support} | resistance {resistance}",
+        "ar": "أقرب دعم {support} | مقاومة {resistance}",
+    },
+    "now.footer": {
+        "en": "Saved as the current plan. /report adds news and the chart.",
+        "ar": "حُفظت كخطة حالية. ‎/report‎ يضيف الأخبار والرسم البياني.",
+    },
+    "term.factor.trend_structure": {"en": "Trend", "ar": "الاتجاه العام"},
+    "term.factor.ema_cross": {"en": "EMA cross", "ar": "تقاطع المتوسطات"},
+    "term.factor.ema_slope": {"en": "EMA slope", "ar": "ميل المتوسط"},
+    "term.factor.macd": {"en": "MACD", "ar": "MACD"},
+    "term.factor.rsi": {"en": "RSI", "ar": "RSI"},
+    "term.factor.adx_direction": {"en": "ADX", "ar": "ADX"},
+    "term.factor.range_position": {"en": "Range", "ar": "موقع النطاق"},
+    "term.factor.momentum": {"en": "Momentum", "ar": "الزخم"},
     "now.hint": {
         "en": "Details for one: /now <symbol>",
         "ar": "للتفاصيل: ‎/now <الرمز>‎",
@@ -579,21 +604,9 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "Today: open {open}, {change} ({percent}%) | high {high} low {low}",
         "ar": "اليوم: الافتتاح {open}، {change} ({percent}%) | الأعلى {high} الأدنى {low}",
     },
-    "now.trend": {
-        "en": "Trend now ({timeframe}): {bias} | ADX {adx} {strength} | RSI {rsi}",
-        "ar": "الاتجاه الآن ({timeframe}): {bias} | ADX {adx} {strength} | RSI {rsi}",
-    },
-    "now.plan": {
-        "en": "Plan from {time}: {bias}",
-        "ar": "الخطة من الساعة {time}: {bias}",
-    },
     "now.levels": {
         "en": "TP1 {tp1}\nTP2 {tp2}\nTP3 {tp3}\nSL  {sl}",
         "ar": "TP1 {tp1}\nTP2 {tp2}\nTP3 {tp3}\nSL  {sl}",
-    },
-    "now.no_plan": {
-        "en": "No plan today -- send /report {epic}",
-        "ar": "لا توجد خطة اليوم — أرسل ‎/report {epic}‎",
     },
     "now.trades": {
         "en": "Your open trades ({count}):",
@@ -605,7 +618,7 @@ CATALOG: Dict[str, Dict[str, str]] = {
     },
     "command.help": {
         "en": (
-            "/now [symbol]      live prices right now (instant)\n"
+            "/now [symbol]      full analysis on live prices, right now\n"
             "/status            open positions and ladder state\n"
             "/confirm <id>      start managing a detected position\n"
             "/decline <id>      leave a detected position alone\n"
@@ -620,7 +633,7 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "/pause /resume     stop or restart all order modifications"
         ),
         "ar": (
-            "‎/now [symbol]‎      الأسعار المباشرة الآن (فوري)\n"
+            "‎/now [symbol]‎      تحليل كامل على الأسعار المباشرة الآن\n"
             "‎/status‎            المراكز المفتوحة ومراحل الإغلاق\n"
             "‎/confirm <id>‎      بدء إدارة مركز تم رصده\n"
             "‎/decline <id>‎      ترك المركز دون إدارة\n"

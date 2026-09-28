@@ -321,10 +321,30 @@ class NowCommandTests(unittest.TestCase):
         reply = self.supervisor.now_command("gold")
 
         self.assertIn("Today: open", reply)
-        self.assertIn("Trend now (H1)", reply)
+        self.assertIn("ANALYSIS NOW", reply)
+        self.assertIn("Direction bias:", reply)
         self.assertIn("TP1", reply)
+        self.assertIn("Signals (H1): Trend", reply)
+        self.assertIn("ADX", reply)
         self.assertIn("Your open trades (1)", reply)
         self.assertIn("+5.00 (", reply, "live distance from the 3400 entry")
+
+    def test_it_analyses_afresh_and_keeps_that_as_the_plan(self):
+        before = self.store.latest_plan("GOLD")
+        self.supervisor.now_command("GOLD")
+        after = self.store.latest_plan("GOLD")
+        self.assertIsNotNone(after)
+        self.assertNotEqual(getattr(before, "plan_id", None), after.plan_id)
+        self.assertEqual(after.fundamental["source"], "skipped",
+                         "no news or AI call, so it answers at once")
+
+    def test_the_levels_follow_the_live_price(self):
+        self.broker.set_quote("GOLD", 3405.0, 3405.2)
+        self.supervisor.now_command("GOLD")
+        at_3405 = self.store.latest_plan("GOLD").reference_price
+        self.broker.set_quote("GOLD", 3425.0, 3425.2)
+        self.supervisor.now_command("GOLD")
+        self.assertNotEqual(self.store.latest_plan("GOLD").reference_price, at_3405)
 
     def test_an_unknown_symbol_says_so_instead_of_crashing(self):
         self.broker.quote = lambda epic: (_ for _ in ()).throw(KeyError(epic))

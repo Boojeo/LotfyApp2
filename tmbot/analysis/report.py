@@ -35,13 +35,22 @@ class ReportBuilder:
 
     # ------------------------------------------------------------------ build
 
-    def build(self, epic: str, direction: Optional[Direction] = None) -> TradePlan:
+    def build(
+        self,
+        epic: str,
+        direction: Optional[Direction] = None,
+        *,
+        fundamentals: bool = True,
+    ) -> TradePlan:
         """Analyse ``epic``.
 
         ``direction`` forces which side the levels are built for.  It is used
         when adopting a position that runs against the bias: the bias is still
         reported honestly, but targets and stop must belong to the side the
         user is actually on, or the stop lands on the wrong side of the entry.
+
+        ``fundamentals=False`` skips the news fetch and the AI call -- the
+        only parts that can take tens of seconds -- for an instant read.
         """
         analysis = self.config.analysis
         epic_config = self.config.epic_config(epic)
@@ -63,18 +72,24 @@ class ReportBuilder:
         technical = bias_module.analyse(entry, analysis, management=self.config.management)
 
         headlines: List[Dict[str, Any]] = []
-        try:
-            headlines = self.news_provider.fetch(
-                epic_config.news_query or epic_config.display or epic,
-                hours=analysis.news_lookback_hours,
-                limit=analysis.news_limit,
+        if fundamentals:
+            try:
+                headlines = self.news_provider.fetch(
+                    epic_config.news_query or epic_config.display or epic,
+                    hours=analysis.news_lookback_hours,
+                    limit=analysis.news_limit,
+                )
+            except Exception as exc:  # news is enrichment, never a hard dependency
+                log.warning("%s: news fetch failed (%s); continuing technical-only",
+                            epic, exc)
+            fundamental = fundamental_module.analyse(
+                epic, epic_config.display or epic, headlines, self.config.llm
             )
-        except Exception as exc:  # news is enrichment, never a hard dependency
-            log.warning("%s: news fetch failed (%s); continuing technical-only", epic, exc)
-
-        fundamental = fundamental_module.analyse(
-            epic, epic_config.display or epic, headlines, self.config.llm
-        )
+        else:
+            fundamental = fundamental_module.FundamentalRead(
+                bias=Bias.NEUTRAL, confidence=0.0,
+                summary="Instant read: news and AI skipped.", source="skipped",
+            )
 
         combined = _combine(technical, fundamental)
         direction = direction or combined.direction or (
