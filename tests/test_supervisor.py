@@ -290,3 +290,45 @@ class TrailingLifecycleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NowCommandTests(unittest.TestCase):
+    """/now reads the broker at the moment it is asked -- nothing cached."""
+
+    def setUp(self):
+        self.supervisor, self.broker, self.store, _ = build_supervisor()
+        self.broker.set_candles("GOLD", "D1", candles(5, end=3390.0))
+        self.supervisor.start()
+
+    def test_the_watchlist_line_shows_the_live_quote(self):
+        self.broker.set_quote("GOLD", 3411.1, 3411.3)
+        reply = self.supervisor.now_command("")
+        self.assertIn("LIVE", reply)
+        self.assertIn("GOLD  3411.1 / 3411.3", reply)
+
+    def test_a_new_price_shows_immediately(self):
+        self.supervisor.now_command("GOLD")
+        self.broker.set_quote("GOLD", 3422.0, 3422.2)
+        self.assertIn("Bid 3422.0", self.supervisor.now_command("GOLD"),
+                      "a second ask must not return the first answer")
+
+    def test_detail_has_the_day_trend_plan_and_trades(self):
+        self.broker.seed_position(position())
+        self.supervisor.tick()
+        self.supervisor.confirm(self.store.pending_trades()[0].short_id)
+        self.broker.set_quote("GOLD", 3405.0, 3405.2)
+
+        reply = self.supervisor.now_command("gold")
+
+        self.assertIn("Today: open", reply)
+        self.assertIn("Trend now (H1)", reply)
+        self.assertIn("TP1", reply)
+        self.assertIn("Your open trades (1)", reply)
+        self.assertIn("+5.00 (", reply, "live distance from the 3400 entry")
+
+    def test_an_unknown_symbol_says_so_instead_of_crashing(self):
+        self.broker.quote = lambda epic: (_ for _ in ()).throw(KeyError(epic))
+        self.assertIn("no live data", self.supervisor.now_command("SILVER"))
+
+    def test_it_is_listed_in_help(self):
+        self.assertIn("/now", self.supervisor.help_text())

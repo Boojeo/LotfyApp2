@@ -16,7 +16,7 @@ from datetime import date, datetime, time as time_of_day, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from ..analysis.bias import trend_strength
+from ..analysis.bias import analyse as technical_read, trend_strength
 from ..analysis.indicators import adx, atr, ema, last_two, last_value, macd, swing_points
 from ..analysis import chart as chart_module
 from ..analysis import journal as journal_module
@@ -561,6 +561,121 @@ class Supervisor:
         key = "reversal.muted" if trade.reversal_muted else "reversal.unmuted"
         return self.t(key, epic=trade.epic, id=trade.short_id)
 
+    def now_command(self, argument: str) -> str:
+        """Live prices at the moment of asking -- nothing cached, no AI, no chart.
+
+        With a symbol: price, today's move, the trend right now, how far the
+        plan's levels are, and your open trades on it with live profit.
+        Without: one line per watchlist instrument.
+        """
+        stamp = utcnow().astimezone(self._report_timezone())
+        heading = self.t("now.heading", time=f"{stamp:%H:%M:%S}",
+                         zone=self.config.report.timezone)
+        if not argument.strip():
+            epics = [item.epic for item in self.config.analysis.watchlist]
+            if not epics:
+                return self.t("command.no_epic")
+            lines = [heading]
+            for epic in epics:
+                try:
+                    lines.append(self._now_line(epic))
+                except Exception as exc:
+                    lines.append(self.t("now.failed", epic=epic, error=exc))
+            lines.append(self.t("now.hint"))
+            return "\n".join(lines)
+
+        epic = self.config.canonical_epic(argument)
+        try:
+            return heading + "\n" + self._now_detail(epic)
+        except Exception as exc:
+            return self.t("now.failed", epic=epic, error=exc)
+
+    def _day_change(self, epic: str, price: float) -> Optional[Dict[str, float]]:
+        """Move since today's open, from the live daily bar."""
+        try:
+            daily = self.broker.candles(epic, "D1", 1)
+        except Exception as exc:
+            log.debug("%s: no daily bar (%s)", epic, exc)
+            return None
+        if not daily:
+            return None
+        today = daily[-1]
+        change = price - today.open
+        return {
+            "open": today.open, "high": max(today.high, price),
+            "low": min(today.low, price), "change": change,
+            "percent": change / today.open * 100.0 if today.open else 0.0,
+        }
+
+    def _now_line(self, epic: str) -> str:
+        quote = self.broker.quote(epic)
+        day = self._day_change(epic, quote.mid)
+        return self.t(
+            "now.line", epic=epic, bid=quote.bid, ask=quote.ask,
+            change=f"{day['percent']:+.2f}%" if day else "-",
+        )
+
+    def _now_detail(self, epic: str) -> str:
+        quote = self.broker.quote(epic)
+        rules = self.broker.market_rules(epic)
+        digits = rules.decimal_places
+        lines = [self.t("now.price", epic=epic, bid=quote.bid, ask=quote.ask,
+                        spread=f"{quote.spread:.{digits}f}")]
+
+        day = self._day_change(epic, quote.mid)
+        if day:
+            lines.append(self.t(
+                "now.day", open=f"{day['open']:.{digits}f}",
+                change=f"{day['change']:+.{digits}f}", percent=f"{day['percent']:+.2f}",
+                high=f"{day['high']:.{digits}f}", low=f"{day['low']:.{digits}f}",
+            ))
+
+        plan = self.store.latest_plan(epic, max_age_hours=24)
+        timeframe = (plan.style.get("entry") if plan and plan.style else None) or (
+            self.config.analysis.entry_timeframe
+        )
+        bars = self.broker.candles(epic, timeframe, 250)
+        if len(bars) >= 60:
+            read = technical_read(bars, self.config.analysis,
+                                  management=self.config.management)
+            lines.append(self.t(
+                "now.trend", timeframe=timeframe, bias=self.t.bias_name(read.bias),
+                adx=f"{read.adx:.0f}", strength=self.t.strength_name(read.strength),
+                rsi=f"{read.rsi:.0f}",
+            ))
+
+        if plan:
+            made = plan.created_at.astimezone(self._report_timezone())
+            price = quote.mid
+
+            def gap(level: float) -> str:
+                return f"{level} ({level - price:+.{digits}f})"
+
+            lines.append(self.t("now.plan", time=f"{made:%H:%M}",
+                                bias=self.t.bias_name(plan.bias)))
+            lines.append(self.t("now.levels", tp1=gap(plan.tp1), tp2=gap(plan.tp2),
+                                tp3=gap(plan.tp3), sl=gap(plan.sl)))
+        else:
+            lines.append(self.t("now.no_plan", epic=epic))
+
+        trades = [trade for trade in self.store.active_trades() if trade.epic == epic]
+        if trades:
+            profit = {p.deal_id: p.upl for p in self.broker.positions() if p.epic == epic}
+            lines.append(self.t("now.trades", count=len(trades)))
+            for trade in trades:
+                exit_price = quote.exit_price(trade.direction)
+                money = profit.get(trade.deal_id)
+                lines.append(self.t(
+                    "now.trade", id=trade.short_id,
+                    direction=self.t.direction_name(trade.direction),
+                    size=trade.remaining_size, entry=trade.entry_price,
+                    move=f"{(exit_price - trade.entry_price) * trade.direction.sign:+.{digits}f}",
+                    r=f"{trade.r_multiple(exit_price):+.2f}",
+                    money=f"{money:+,.2f}" if money is not None else "-",
+                    sl=trade.stop_level if trade.stop_level is not None else "-",
+                ))
+        return "\n".join(lines)
+
     def _absorb_extremes(self, trade: ManagedTrade, snapshot: MarketSnapshot) -> None:
         """Fold recent candle extremes into the high-water mark.
 
@@ -914,6 +1029,8 @@ class Supervisor:
         self.notifier.register("manage", self.manage_existing)
         self.notifier.register("report", self.report_command)
         self.notifier.register("plan", self.plan_command)
+        self.notifier.register("now", self.now_command)
+        self.notifier.register("live", self.now_command)
         self.notifier.register("close", self.close_command)
         self.notifier.register("be", self.breakeven_command)
         self.notifier.register("journal", self.journal_command)

@@ -555,8 +555,57 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "Usage: /plan <epic>",
         "ar": "الاستخدام: ‎/plan <رمز الأداة>‎",
     },
+    "now.heading": {
+        "en": "LIVE {time} ({zone})",
+        "ar": "مباشر {time} ({zone})",
+    },
+    "now.line": {
+        "en": "{epic}  {bid} / {ask}  today {change}",
+        "ar": "{epic}  {bid} / {ask}  اليوم {change}",
+    },
+    "now.hint": {
+        "en": "Details for one: /now <symbol>",
+        "ar": "للتفاصيل: ‎/now <الرمز>‎",
+    },
+    "now.failed": {
+        "en": "{epic}: no live data ({error})",
+        "ar": "{epic}: لا توجد بيانات مباشرة ({error})",
+    },
+    "now.price": {
+        "en": "{epic}  Bid {bid} | Ask {ask} | Spread {spread}",
+        "ar": "{epic}  بيع {bid} | شراء {ask} | الفارق {spread}",
+    },
+    "now.day": {
+        "en": "Today: open {open}, {change} ({percent}%) | high {high} low {low}",
+        "ar": "اليوم: الافتتاح {open}، {change} ({percent}%) | الأعلى {high} الأدنى {low}",
+    },
+    "now.trend": {
+        "en": "Trend now ({timeframe}): {bias} | ADX {adx} {strength} | RSI {rsi}",
+        "ar": "الاتجاه الآن ({timeframe}): {bias} | ADX {adx} {strength} | RSI {rsi}",
+    },
+    "now.plan": {
+        "en": "Plan from {time}: {bias}",
+        "ar": "الخطة من الساعة {time}: {bias}",
+    },
+    "now.levels": {
+        "en": "TP1 {tp1}\nTP2 {tp2}\nTP3 {tp3}\nSL  {sl}",
+        "ar": "TP1 {tp1}\nTP2 {tp2}\nTP3 {tp3}\nSL  {sl}",
+    },
+    "now.no_plan": {
+        "en": "No plan today -- send /report {epic}",
+        "ar": "لا توجد خطة اليوم — أرسل ‎/report {epic}‎",
+    },
+    "now.trades": {
+        "en": "Your open trades ({count}):",
+        "ar": "صفقاتك المفتوحة ({count}):",
+    },
+    "now.trade": {
+        "en": "[{id}] {direction} {size} @ {entry}: {move} ({r}R) {money} | SL {sl}",
+        "ar": "[{id}] {direction} {size} @ {entry}: {move} ({r}R) {money} | الوقف {sl}",
+    },
     "command.help": {
         "en": (
+            "/now [symbol]      live prices right now (instant)\n"
             "/status            open positions and ladder state\n"
             "/confirm <id>      start managing a detected position\n"
             "/decline <id>      leave a detected position alone\n"
@@ -571,6 +620,7 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "/pause /resume     stop or restart all order modifications"
         ),
         "ar": (
+            "‎/now [symbol]‎      الأسعار المباشرة الآن (فوري)\n"
             "‎/status‎            المراكز المفتوحة ومراحل الإغلاق\n"
             "‎/confirm <id>‎      بدء إدارة مركز تم رصده\n"
             "‎/decline <id>‎      ترك المركز دون إدارة\n"
