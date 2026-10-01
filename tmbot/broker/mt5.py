@@ -269,6 +269,12 @@ class MT5Broker(BrokerAdapter):
             "server": login.server,
             "timeout": int(self.config.mt5.connect_timeout_ms),
         }
+        # Said out loud: starting or reaching the terminal can take up to the
+        # full timeout, and a silent window looks exactly like a frozen bot.
+        log.info(
+            "connecting to MetaTrader 5: account %s on %s (waiting up to %.0fs) ...",
+            kwargs["login"], login.server, kwargs["timeout"] / 1000.0,
+        )
         if login.terminal_path:
             ok = self.mt5.initialize(login.terminal_path, **kwargs)
         else:

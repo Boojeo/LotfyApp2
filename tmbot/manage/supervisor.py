@@ -108,6 +108,8 @@ class Supervisor:
     # ------------------------------------------------------------------ lifecycle
 
     def start(self) -> None:
+        log.info("starting: %s, %s account -- connecting to the broker",
+                 self.broker.name, self.config.broker.environment)
         self.broker.connect()
         partials_needed = self.config.management.exit_model == "partial_close"
         probe = self.broker.probe_partial_close(needed=partials_needed)
@@ -1078,7 +1080,10 @@ class Supervisor:
         self.publish_daily_report()
 
     def publish_daily_report(self) -> None:
+        log.info("building the daily report for %d instrument(s) ...",
+                 len(self.config.analysis.watchlist))
         for item in self.config.analysis.watchlist:
+            log.info("analysing %s ...", item.epic)
             try:
                 plan = self._plan_for(item.epic, force=True, second_opinion=True)
             except Exception as exc:
