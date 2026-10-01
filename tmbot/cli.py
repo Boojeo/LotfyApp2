@@ -460,8 +460,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                       f"{config.style.intraday_min_adx:g} in the same direction")
                 print("              (the timeframes below are then not used)")
             if config.report.risk_percent > 0:
-                print(f"lot size      reports suggest lots for "
-                      f"{config.report.risk_percent:g}% risk of your balance")
+                print(f"risk limit    the whole trade may lose at most "
+                      f"{config.report.risk_percent:g}% of equity at the stop")
+                if management.exit_model == "three_deals":
+                    print(f"              too big for 3 deals -> 2 deals "
+                          f"({' / '.join(management.targets_for(2))}), then 1 "
+                          f"({' / '.join(management.targets_for(1))}), else REJECTED")
             print(f"analysis      structure on {analysis.structure_timeframe}, "
                   f"levels and bias on {analysis.entry_timeframe}, "
                   f"ATR({analysis.atr_period})")
