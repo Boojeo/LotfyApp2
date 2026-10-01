@@ -742,19 +742,52 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "ar": "النمط: {style} (حوالي {hours} ساعة) | المستويات {entry}، الهيكل "
               "{structure}، الإدارة على {management}",
     },
-    "report.sizing": {
-        "en": "Lot size for {percent}% risk ({money} {currency}): {lots} lots "
-              "per deal x {deals}",
-        "ar": "حجم اللوت لمخاطرة {percent}% ({money} {currency}): {lots} لوت "
-              "لكل صفقة × {deals}",
+    "risk.ok": {
+        "en": "Risk {percent}% of equity = max {max_money} {currency}: open {deals} x "
+              "{lots} lots ({targets}) | loss at SL {loss} {currency} ({loss_percent}%)",
+        "ar": "مخاطرة {percent}% من رأس المال = حد أقصى {max_money} {currency}: افتح "
+              "{deals} × {lots} لوت ({targets}) | الخسارة عند الوقف {loss} {currency} "
+              "({loss_percent}%)",
     },
-    "report.sizing_min": {
-        "en": "Lot size: even the minimum {lots} lots per deal x {deals} risks "
-              "{actual_percent}% ({actual_money} {currency}), more than your "
-              "{percent}% -- consider skipping or trading fewer deals",
-        "ar": "حجم اللوت: حتى الحد الأدنى {lots} لوت لكل صفقة × {deals} يخاطر "
-              "بـ {actual_percent}% ({actual_money} {currency})، أكثر من "
-              "{percent}% المحددة -- فكّر في تخطي الصفقة أو تقليل عدد الصفقات",
+    "risk.reduced": {
+        "en": "Risk limit: {planned} deals at the {min_lot} minimum would be over "
+              "{percent}% -- open {deals} x {lots} lots instead ({targets}) | loss at SL "
+              "{loss} {currency} ({loss_percent}%)",
+        "ar": "حد المخاطرة: {planned} صفقات بالحد الأدنى {min_lot} تتجاوز {percent}% -- "
+              "افتح {deals} × {lots} لوت بدلًا منها ({targets}) | الخسارة عند الوقف "
+              "{loss} {currency} ({loss_percent}%)",
+    },
+    "risk.rejected": {
+        "en": "REJECTED -- RISK LIMIT: even 1 deal at the {min_lot} minimum loses "
+              "{min_money} {currency} ({min_percent}%) at the stop, over your {percent}% "
+              "({max_money} {currency}). Skip this trade.",
+        "ar": "مرفوضة -- حد المخاطرة: حتى صفقة واحدة بالحد الأدنى {min_lot} تخسر "
+              "{min_money} {currency} ({min_percent}%) عند الوقف، أكثر من {percent}% "
+              "({max_money} {currency}). تجنّب هذه الصفقة.",
+    },
+    "risk.detail": {
+        "en": "Ideal {ideal} lots total | broker min {min_lot}, step {step}, max {max_lot} "
+              "| equity {equity} {currency}",
+        "ar": "الحجم المثالي {ideal} لوت إجمالًا | الحد الأدنى للوسيط {min_lot}، الخطوة "
+              "{step}، الحد الأقصى {max_lot} | رأس المال {equity} {currency}",
+    },
+    "risk.unchecked": {
+        "en": "Risk at stop: NOT CHECKED (account or contract size unavailable) -- size "
+              "this trade yourself",
+        "ar": "المخاطرة عند الوقف: لم يتم التحقق (بيانات الحساب أو العقد غير متاحة) -- "
+              "حدد الحجم بنفسك",
+    },
+    "risk.actual_ok": {
+        "en": "Your {deals} deal(s) lose {money} at the stop = {percent}% of equity "
+              "(limit {limit}%) -- within the limit",
+        "ar": "صفقاتك ({deals}) تخسر {money} عند الوقف = {percent}% من رأس المال "
+              "(الحد {limit}%) -- ضمن الحد",
+    },
+    "risk.actual_over": {
+        "en": "WARNING: your {deals} deal(s) lose {money} at the stop = {percent}% of "
+              "equity -- OVER your {limit}% limit. Consider closing a deal or a smaller size.",
+        "ar": "تحذير: صفقاتك ({deals}) تخسر {money} عند الوقف = {percent}% من رأس المال "
+              "-- أكثر من حدك {limit}%. فكّر في إغلاق صفقة أو تقليل الحجم.",
     },
     "report.levels_heading": {"en": "Levels", "ar": "المستويات"},
     "report.col_level": {"en": "Level", "ar": "المستوى"},

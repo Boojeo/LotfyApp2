@@ -105,7 +105,8 @@ class ReportBuilder:
 
         rules = self.broker.market_rules(epic)
         sizing = style_module.size_for_plan(
-            self.broker, self.config, rules, abs(reference - level_plan.sl)
+            self.broker, self.config, rules, abs(reference - level_plan.sl),
+            spread=quote.spread,
         )
         return TradePlan(
             epic=epic,
@@ -287,14 +288,29 @@ def sizing_lines(plan: TradePlan, t: Translator) -> List[str]:
     sizing = plan.sizing
     if not sizing:
         return []
-    key = "report.sizing_min" if sizing.get("above_target") else "report.sizing"
-    return [t(key,
-              lots=sizing.get("per_deal"), deals=sizing.get("deals"),
-              percent=f"{sizing.get('risk_percent', 0):g}",
-              money=f"{sizing.get('risk_money', 0):,.2f}",
-              actual_percent=f"{sizing.get('actual_percent', 0):g}",
-              actual_money=f"{sizing.get('actual_money', 0):,.2f}",
-              currency=sizing.get("currency", ""))]
+    verdict = sizing.get("verdict")
+    if verdict == "UNCHECKED":
+        return [t("risk.unchecked")]
+    money = lambda key: f"{sizing.get(key, 0):,.2f}"  # noqa: E731
+    common = dict(
+        percent=f"{sizing.get('risk_percent', 0):g}", currency=sizing.get("currency", ""),
+        max_money=money("max_money"), lots=sizing.get("per_leg"), deals=sizing.get("legs"),
+        planned=sizing.get("legs_planned"), loss=money("total_money"),
+        loss_percent=f"{sizing.get('total_percent', 0):.2f}",
+        min_lot=sizing.get("broker_min"), min_money=money("min_lot_money"),
+        min_percent=f"{sizing.get('min_lot_percent', 0):.2f}",
+        targets=" / ".join(sizing.get("targets") or []) or "-",
+    )
+    key = {"OK": "risk.ok", "REDUCED_LEGS": "risk.reduced",
+           "REJECTED": "risk.rejected"}.get(verdict, "risk.ok")
+    lines = [t(key, **common)]
+    lines.append(t(
+        "risk.detail", ideal=f"{sizing.get('ideal_volume', 0):.4f}",
+        min_lot=sizing.get("broker_min"), step=sizing.get("broker_step"),
+        max_lot=sizing.get("broker_max") or "-",
+        equity=money("equity"), currency=sizing.get("currency", ""),
+    ))
+    return lines
 
 
 def render_text(plan: TradePlan, t: Optional[Translator] = None) -> str:

@@ -168,6 +168,7 @@ class MarketRules:
     # how many lots keep a stop-out to a chosen share of the balance. None
     # when the broker does not publish it.
     value_per_point: Optional[float] = None
+    max_deal_size: Optional[float] = None   # broker's largest single order
 
     def round_price(self, price: float) -> float:
         return round(price, self.decimal_places)
@@ -497,6 +498,9 @@ class ManagedTrade:
     group_id: str = ""
     leg_index: int = 0
     leg_target: Optional[Stage] = None
+    # How many deals the basket was planned as (3, or fewer when the 1% risk
+    # limit allowed fewer). 0 for records from before this was stored.
+    basket_size: int = 0
     tp1_done: bool = False
     tp2_done: bool = False
     breakeven_done: bool = False
@@ -566,6 +570,7 @@ class ManagedTrade:
             "group_id": self.group_id,
             "leg_index": self.leg_index,
             "leg_target": self.leg_target.value if self.leg_target else None,
+            "basket_size": self.basket_size,
             "tp1_done": self.tp1_done,
             "tp2_done": self.tp2_done,
             "breakeven_done": self.breakeven_done,
@@ -603,6 +608,7 @@ class ManagedTrade:
             group_id=raw.get("group_id", ""),
             leg_index=int(raw.get("leg_index", 0)),
             leg_target=Stage(raw["leg_target"]) if raw.get("leg_target") else None,
+            basket_size=int(raw.get("basket_size", 0) or 0),
             tp1_done=bool(raw.get("tp1_done")),
             tp2_done=bool(raw.get("tp2_done")),
             breakeven_done=bool(raw.get("breakeven_done")),
@@ -635,6 +641,7 @@ class ManagedTrade:
         group_id: str = "",
         leg_index: int = 0,
         leg_target: Optional[Stage] = None,
+        basket_size: int = 0,
     ) -> "ManagedTrade":
         rebased = plan.rebase(position.entry_price)
         return cls(
@@ -653,6 +660,7 @@ class ManagedTrade:
             group_id=group_id,
             leg_index=leg_index,
             leg_target=leg_target,
+            basket_size=basket_size,
             stop_level=position.stop_level,
             best_price=position.entry_price,
             opened_at=position.created_at,

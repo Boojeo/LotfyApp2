@@ -112,30 +112,32 @@ class ChoiceTests(unittest.TestCase):
 
 
 class SizingTests(unittest.TestCase):
-    def test_lots_keep_the_stop_out_within_the_risk(self):
-        sizing = style_module.size(
-            balance=10_000, currency="USD", risk_percent=1.0,
-            stop_distance=5.0, rules=GOLD, deals=3,
-        )
-        # $100 risk / ($5 x $100 per lot) = 0.2 lots, / 3 deals, rounded DOWN.
-        self.assertEqual(sizing["per_deal"], 0.06)
-        self.assertEqual(sizing["actual_money"], 90.0)
-        self.assertFalse(sizing["above_target"])
+    """The plan's lot advice now comes from tmbot.analysis.risk (see test_risk.py
+    for the full matrix); these keep the arithmetic the report relies on."""
 
-    def test_a_stop_too_wide_even_for_the_minimum_lot_is_reported(self):
-        sizing = style_module.size(
-            balance=10_000, currency="USD", risk_percent=1.0,
-            stop_distance=50.0, rules=GOLD, deals=3,
-        )
-        self.assertEqual(sizing["per_deal"], 0.01)
-        self.assertTrue(sizing["above_target"])
-        self.assertEqual(sizing["actual_percent"], 1.5)
+    def assess(self, **overrides):
+        from tmbot.analysis import risk
+        args = dict(equity=10_000, currency="USD", risk_percent=1.0,
+                    stop_distance=5.0, rules=GOLD, legs_planned=3)
+        args.update(overrides)
+        return risk.assess(**args)
+
+    def test_lots_keep_the_stop_out_within_the_risk(self):
+        result = self.assess()
+        # $100 risk / ($5 x $100 per lot) = 0.2 lots, / 3 deals, rounded DOWN.
+        self.assertEqual(result.per_leg, 0.06)
+        self.assertEqual(result.total_money, 90.0)
+        self.assertEqual(result.verdict, "OK")
+
+    def test_a_stop_too_wide_for_three_minimum_lots_advises_fewer_deals(self):
+        # Used to recommend 3 x 0.01 at 1.5% risk; the limit now wins.
+        result = self.assess(stop_distance=50.0)
+        self.assertEqual(result.verdict, "REDUCED_LEGS")
+        self.assertEqual((result.legs, result.per_leg), (2, 0.01))
+        self.assertLessEqual(result.total_percent, 1.0)
 
     def test_no_advice_without_a_value_per_point(self):
-        self.assertEqual(style_module.size(
-            balance=10_000, currency="USD", risk_percent=1.0,
-            stop_distance=5.0, rules=RULES, deals=3,
-        ), {})
+        self.assertIsNone(self.assess(rules=RULES))
 
 
 class ReportTests(unittest.TestCase):
@@ -146,8 +148,8 @@ class ReportTests(unittest.TestCase):
         plan = self.build(M15=UP, H1=UP)
         self.assertEqual(plan.style["name"], "intraday")
         self.assertEqual(plan.management_timeframe, "M15")
-        self.assertEqual(plan.sizing["deals"], 3)
-        self.assertGreater(plan.sizing["per_deal"], 0)
+        self.assertEqual(plan.sizing["legs"], 3)
+        self.assertGreater(plan.sizing["per_leg"], 0)
 
         restored = TradePlan.from_dict(plan.to_dict())
         self.assertEqual(restored.style, plan.style)
@@ -158,7 +160,8 @@ class ReportTests(unittest.TestCase):
         self.assertIn("Style: Scalp", text)
         self.assertIn("managed on M5", text)
         self.assertIn("no strong trend on H1", text)
-        self.assertIn("lots per deal x 3", text)
+        self.assertIn("open 3 x", text)
+        self.assertIn("loss at SL", text)
 
         arabic = render_text(self.build(M15=UP, H1=FLAT), Translator("ar"))
         self.assertIn("سكالبينج", arabic)
@@ -170,7 +173,7 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(scalp.style["name"], "scalp")
         self.assertEqual(intraday.style["name"], "intraday")
         self.assertLess(scalp.risk, intraday.risk)
-        self.assertGreaterEqual(scalp.sizing["per_deal"], intraday.sizing["per_deal"])
+        self.assertGreaterEqual(scalp.sizing["per_leg"], intraday.sizing["per_leg"])
 
     def test_old_plans_without_a_style_still_load_and_render(self):
         plan = self.build()

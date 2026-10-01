@@ -13,7 +13,6 @@ further away, so the same money at risk means fewer lots.
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -21,6 +20,7 @@ from ..broker.base import BrokerAdapter
 from ..config import STYLE_PROFILES, Config, StyleProfile
 from ..models import Bias, Candle, MarketRules
 from . import bias as bias_module
+from . import risk as risk_module
 
 log = logging.getLogger(__name__)
 
@@ -131,69 +131,57 @@ def _balance(summary: Dict[str, Any]) -> Optional[float]:
         return None
 
 
-def size(
-    *,
-    balance: Optional[float],
-    currency: str,
-    risk_percent: float,
-    stop_distance: float,
-    rules: MarketRules,
-    deals: int,
-) -> Dict[str, Any]:
-    """Lots per deal that lose ``risk_percent`` of the balance at the stop.
+def equity_of(summary: Dict[str, Any]) -> Optional[float]:
+    """Equity (balance plus open profit/loss), the base the risk limit uses.
 
-    Rounded DOWN to the broker's lot step, so the advice never risks more
-    than asked -- except when even the minimum lot does, which is reported
-    with the real percentage instead of being hidden.
+    Falls back to the balance only when the broker does not report equity.
     """
-    value = rules.value_per_point
-    if not (balance and balance > 0 and risk_percent > 0 and stop_distance > 0 and value):
-        return {}
-    deals = max(1, deals)
-    risk_money = balance * risk_percent / 100.0
-    loss_per_lot = stop_distance * value
-    per_deal = risk_money / loss_per_lot / deals
+    try:
+        value = summary.get("equity")
+        if value is not None and float(value) > 0:
+            return float(value)
+    except (TypeError, ValueError):
+        pass
+    return _balance(summary)
 
-    step = rules.size_step or rules.min_deal_size or 0.01
-    per_deal = math.floor(round(per_deal / step, 9)) * step
-    decimals = max(0, -int(math.floor(math.log10(step)))) if step < 1 else 0
-    per_deal = round(per_deal, decimals)
 
-    minimum = rules.min_deal_size or step
-    too_small = per_deal < minimum
-    if too_small:
-        per_deal = minimum
-    actual_money = per_deal * deals * loss_per_lot
-    return {
-        "risk_percent": risk_percent,
-        "risk_money": round(risk_money, 2),
-        "currency": currency,
-        "per_deal": per_deal,
-        "deals": deals,
-        "actual_percent": round(actual_money / balance * 100.0, 2),
-        "actual_money": round(actual_money, 2),
-        "above_target": too_small,
-    }
+def planned_legs(config: Config) -> int:
+    management = config.management
+    return len(management.leg_targets) if management.exit_model == "three_deals" else 1
 
 
 def size_for_plan(
-    broker: BrokerAdapter, config: Config, rules: MarketRules, stop_distance: float
+    broker: BrokerAdapter,
+    config: Config,
+    rules: MarketRules,
+    stop_distance: float,
+    spread: float = 0.0,
 ) -> Dict[str, Any]:
+    """The hard risk check for a plan's stop, as stored on the plan.
+
+    Empty when there is nothing to check against (sizing turned off, or the
+    broker publishes no contract value); ``{"verdict": "UNCHECKED", ...}``
+    when the account could not be read -- unknown is never shown as safe.
+    """
     if config.report.risk_percent <= 0 or not rules.value_per_point:
         return {}
     try:
         summary = broker.account_summary()
     except Exception as exc:  # advice only; never block a report on it
-        log.warning("no account balance for lot sizing (%s)", exc)
-        return {}
-    deals = len(config.management.leg_targets) if (
-        config.management.exit_model == "three_deals"
-    ) else 1
-    return size(
-        balance=_balance(summary),
+        log.warning("no account equity for the risk check (%s)", exc)
+        return {"verdict": "UNCHECKED", "reason": str(exc)}
+    assessment = risk_module.assess(
+        equity=equity_of(summary) or 0.0,
         currency=str(summary.get("currency", "") or ""),
         risk_percent=config.report.risk_percent,
         stop_distance=stop_distance,
         rules=rules,
-        deals=deals,
+        legs_planned=planned_legs(config),
+        spread=spread,
     )
+    if assessment is None:
+        return {"verdict": "UNCHECKED", "reason": "no equity reported"}
+    sizing = assessment.to_dict()
+    if config.management.exit_model == "three_deals":
+        sizing["targets"] = config.management.targets_for(assessment.legs)
+    return sizing

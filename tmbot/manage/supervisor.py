@@ -20,6 +20,8 @@ from ..analysis.bias import trend_strength
 from ..analysis.indicators import adx, atr, ema, last_two, last_value, macd, swing_points
 from ..analysis import chart as chart_module
 from ..analysis import journal as journal_module
+from ..analysis import risk as risk_module
+from ..analysis import style as style_module
 from ..analysis.report import (
     ReportBuilder,
     render_markdown,
@@ -191,10 +193,11 @@ class Supervisor:
                 )
                 continue
 
-            group_id, leg_index, leg_target = self._assign_leg(position)
+            group_id, leg_index, leg_target, basket = self._assign_leg(position, plan)
             trade = ManagedTrade.from_position(
                 position, plan,
                 group_id=group_id, leg_index=leg_index, leg_target=leg_target,
+                basket_size=basket,
             )
             # Rebasing onto the fill reintroduces float noise; round to the
             # instrument's own precision before any of it reaches the broker.
@@ -238,18 +241,33 @@ class Supervisor:
             )
             self.notifier.send(self._adoption_message(trade, plan))
 
-    def _assign_leg(self, position: BrokerPosition) -> tuple[str, int, Optional[Stage]]:
-        """Work out which three-deal basket a new position belongs to.
+    def _advised_legs(self, plan: Optional[TradePlan]) -> int:
+        """How many deals the plan's risk check allowed; the full basket otherwise.
+
+        A rejected plan still maps the full basket: the deals are already
+        open, and the adoption message shows how far over the limit they are.
+        """
+        full = len(self.config.management.leg_targets)
+        sizing = plan.sizing if plan else {}
+        if sizing.get("verdict") in ("OK", "REDUCED_LEGS") and sizing.get("legs"):
+            return max(1, min(full, int(sizing["legs"])))
+        return full
+
+    def _assign_leg(
+        self, position: BrokerPosition, plan: Optional[TradePlan] = None
+    ) -> tuple[str, int, Optional[Stage], int]:
+        """Work out which basket a new position belongs to, and its target.
 
         Deals on the same instrument and side, opened within the grouping
-        window, are treated as one basket: first deal exits at TP1, second at
-        TP2, third rides to TP3.
+        window, are treated as one basket. Its size comes from the plan's
+        risk check: three deals close at TP1 / TP2 / TP3; when 1% of equity
+        only allowed fewer, two deals close at TP1 / TP3 and one at TP1
+        (management.two_leg_targets / one_leg_targets).
         """
         management = self.config.management
         if management.exit_model != "three_deals":
-            return "", 0, None
+            return "", 0, None, 0
 
-        targets = [stage.upper() for stage in management.leg_targets]
         window = management.group_window_minutes * 60.0
         # Deals are grouped by how close together THEY were opened, not by how
         # old they are -- otherwise starting the bot an hour after you placed
@@ -274,14 +292,22 @@ class Supervisor:
             key=lambda item: max(leg.adopted_at for leg in item[1]),
             reverse=True,
         ):
+            # The basket keeps the size it was started with, even if a later
+            # analysis allowed a different number of deals.
+            basket = next((leg.basket_size for leg in legs if leg.basket_size), 0) or len(
+                management.leg_targets
+            )
+            targets = management.targets_for(basket)
             if len(legs) >= len(targets):
                 continue
             leg_index = max(leg.leg_index for leg in legs) + 1
-            return group_id, leg_index, Stage(targets[min(leg_index, len(targets) - 1)])
+            return (group_id, leg_index,
+                    Stage(targets[min(leg_index, len(targets) - 1)]), basket)
 
-        return f"{position.epic}-{position.direction.value}-{uuid.uuid4().hex[:6]}", 0, Stage(
-            targets[0]
-        )
+        basket = self._advised_legs(plan)
+        targets = management.targets_for(basket)
+        return (f"{position.epic}-{position.direction.value}-{uuid.uuid4().hex[:6]}", 0,
+                Stage(targets[0]), basket)
 
     def _adoption_message(self, trade: ManagedTrade, plan: TradePlan) -> str:
         management = self.config.management
@@ -309,7 +335,7 @@ class Supervisor:
 
         if management.exit_model == "three_deals":
             target = trade.leg_target.value if trade.leg_target else "TP3"
-            legs = len(management.leg_targets)
+            legs = trade.basket_size or len(management.leg_targets)
             parts.append(
                 self.t("adoption.plan_leg", index=trade.leg_index + 1,
                        total=legs, target=target) + self.t.semicolon + rules
@@ -327,9 +353,50 @@ class Supervisor:
                 self.t("adoption.plan_ladder", steps=steps) + self.t.semicolon + rules
             )
 
+        risk_line = self._basket_risk_line(trade)
+        if risk_line:
+            parts.append(risk_line)
+
         parts.append("")
         parts.append(self.t("adoption.confirm_hint", id=trade.short_id))
         return "\n".join(parts)
+
+    def _basket_risk_line(self, trade: ManagedTrade) -> str:
+        """What the deals you actually opened lose at their stops, vs the limit.
+
+        Told before you confirm. The bot does not resize or refuse your deals
+        -- it never opens or enlarges positions -- but going over the limit is
+        never silent.
+        """
+        limit = self.config.report.risk_percent
+        if limit <= 0:
+            return ""
+        legs = [leg for leg in (self.store.trades_in_group(trade.group_id)
+                                if trade.group_id else []) or [trade]
+                if leg.status in (TradeStatus.PENDING_CONFIRMATION, TradeStatus.MANAGING)]
+        try:
+            rules = self.broker.market_rules(trade.epic)
+            equity = style_module.equity_of(self.broker.account_summary())
+        except Exception as exc:
+            log.warning("%s: risk at stop not checked (%s)", trade.epic, exc)
+            return self.t("risk.unchecked")
+        actual = risk_module.basket_risk(
+            volumes_and_distances=[(leg.initial_size, abs(leg.entry_price - leg.sl))
+                                   for leg in legs],
+            value_per_point=rules.value_per_point, equity=equity or 0.0,
+        )
+        if actual is None:
+            return self.t("risk.unchecked")
+        over = actual["percent"] > limit + 1e-9
+        self.store.log_event(
+            "basket_risk",
+            f"{len(legs)} deal(s) lose {actual['money']} ({actual['percent']}%) at the stop; "
+            f"limit {limit}%" + (" -- OVER" if over else ""),
+            deal_id=trade.deal_id, epic=trade.epic,
+        )
+        return self.t("risk.actual_over" if over else "risk.actual_ok",
+                      deals=len(legs), money=f"{actual['money']:,.2f}",
+                      percent=f"{actual['percent']:.2f}", limit=f"{limit:g}")
 
     def _plan_for(
         self,

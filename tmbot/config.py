@@ -147,6 +147,10 @@ class ManagementConfig:
     #                    broker nets the three deals into a single position.
     exit_model: str = "three_deals"
     leg_targets: List[str] = field(default_factory=lambda: ["TP1", "TP2", "TP3"])
+    # When the 1% risk limit only allows fewer deals, which targets they get:
+    # two deals bank TP1 and let the other ride to TP3; one deal takes TP1.
+    two_leg_targets: List[str] = field(default_factory=lambda: ["TP1", "TP3"])
+    one_leg_targets: List[str] = field(default_factory=lambda: ["TP1"])
     group_window_minutes: float = 15.0
     # 50% of the original at TP1, 25% at TP2, the remaining 25% rides to TP3.
     ladder: List[LadderStep] = field(
@@ -179,6 +183,18 @@ class ManagementConfig:
     max_quote_age_seconds: float = 90.0
     adoption_confirm_timeout_minutes: float = 30.0
     auto_decline_on_timeout: bool = True
+
+
+    def targets_for(self, legs: int) -> List[str]:
+        """Targets for a basket of ``legs`` deals, in leg order."""
+        full = [stage.upper() for stage in self.leg_targets]
+        if legs >= len(full):
+            return full
+        if legs == 2:
+            return [stage.upper() for stage in self.two_leg_targets]
+        if legs == 1:
+            return [stage.upper() for stage in self.one_leg_targets]
+        return full[:max(legs, 0)]
 
 
 @dataclass
@@ -432,6 +448,14 @@ class Config:
                     "management.leg_targets must list TP1/TP2/TP3 in the order the "
                     "legs should be closed"
                 )
+            for name, wanted in (("two_leg_targets", 2), ("one_leg_targets", 1)):
+                listed = getattr(self.management, name)
+                if len(listed) != wanted or any(
+                    t.upper() not in ("TP1", "TP2", "TP3") for t in listed
+                ):
+                    raise ConfigError(
+                        f"management.{name} must list {wanted} of TP1/TP2/TP3"
+                    )
         if self.telegram.enabled and not (self.telegram.bot_token and self.telegram.chat_id):
             raise ConfigError("telegram.enabled is true but bot_token/chat_id are not set")
         if self.reversal.action not in ("tighten", "close", "alert"):

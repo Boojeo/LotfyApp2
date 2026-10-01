@@ -452,6 +452,7 @@ class MT5Broker(BrokerAdapter):
             min_stop_distance_is_pct=False,
             tradeable=mode != SYMBOL_TRADE_MODE_DISABLED,
             value_per_point=(tick_value / tick_size) if tick_size > 0 and tick_value > 0 else None,
+            max_deal_size=float(_field(info, "volume_max", 0.0) or 0.0) or None,
         )
         self._rules_cache[epic] = rules
         return rules
