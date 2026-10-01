@@ -152,6 +152,23 @@ class BrokerAdapter(ABC):
         """
         return None
 
+    def closing_details(self, deal_id: str) -> Optional[Dict[str, Any]]:
+        """Everything the broker booked when a position was closed.
+
+        Keys: price, volume, profit, commission, swap, refs. Defaults to just
+        the price, for brokers that only know that much.
+        """
+        price = self.closing_price(deal_id)
+        return {"price": price} if price is not None else None
+
+    def deal_details(self, reference: str) -> Optional[Dict[str, Any]]:
+        """The booked result of one order we sent, by the reference it returned.
+
+        Same keys as :meth:`closing_details`. None when the broker cannot say,
+        in which case the quoted price stands in.
+        """
+        return None
+
     def search_markets(self, term: str) -> List[Dict[str, Any]]:
         """Find instruments by name so a user can discover the epic to trade."""
         raise NotImplementedError(f"{self.name} cannot search markets")

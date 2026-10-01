@@ -424,6 +424,12 @@ class Fill:
     initial_risk: float
     fraction: float       # share of the original position this fill closed
     inferred: bool = False  # exit price estimated, not observed
+    # What the broker actually booked, when it says (MT5 does): money in the
+    # account currency, and the broker's own deal number(s) for this exit.
+    profit: Optional[float] = None
+    commission: Optional[float] = None
+    swap: Optional[float] = None
+    broker_ref: str = ""
 
     @property
     def r_multiple(self) -> float:
@@ -439,7 +445,9 @@ class Fill:
             "stage": self.stage, "size": self.size, "price": self.price,
             "entry_price": self.entry_price, "direction": self.direction.value,
             "initial_risk": self.initial_risk, "fraction": self.fraction,
-            "inferred": self.inferred,
+            "inferred": self.inferred, "profit": self.profit,
+            "commission": self.commission, "swap": self.swap,
+            "broker_ref": self.broker_ref,
         }
 
     @classmethod
@@ -452,6 +460,10 @@ class Fill:
             initial_risk=float(raw["initial_risk"]),
             fraction=float(raw["fraction"]),
             inferred=bool(raw.get("inferred")),
+            profit=_opt_float(raw.get("profit")),
+            commission=_opt_float(raw.get("commission")),
+            swap=_opt_float(raw.get("swap")),
+            broker_ref=str(raw.get("broker_ref") or ""),
         )
 
 

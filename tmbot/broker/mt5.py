@@ -716,6 +716,35 @@ class MT5Broker(BrokerAdapter):
         return {"dealReference": deal_reference, "dealStatus": "ACCEPTED"}
 
     def closing_price(self, deal_id: str) -> Optional[float]:
+        details = self.closing_details(deal_id)
+        return details["price"] if details else None
+
+    @staticmethod
+    def _summarise_deals(deals: List[Any]) -> Optional[Dict[str, Any]]:
+        """Price (volume-weighted, in case of several exits) and booked money."""
+        if not deals:
+            return None
+        volume = sum(float(_field(deal, "volume", 0.0) or 0.0) for deal in deals)
+        if volume > 0:
+            price = sum(
+                float(_field(deal, "price")) * float(_field(deal, "volume")) for deal in deals
+            ) / volume
+        else:
+            price = float(_field(deals[-1], "price"))
+
+        def total(name: str) -> float:
+            return round(sum(float(_field(deal, name, 0.0) or 0.0) for deal in deals), 2)
+
+        return {
+            "price": price,
+            "volume": volume,
+            "profit": total("profit"),
+            "commission": total("commission"),
+            "swap": total("swap"),
+            "refs": ",".join(str(_field(deal, "ticket", "")) for deal in deals),
+        }
+
+    def closing_details(self, deal_id: str) -> Optional[Dict[str, Any]]:
         try:
             ticket = int(deal_id)
         except (TypeError, ValueError):
@@ -723,19 +752,20 @@ class MT5Broker(BrokerAdapter):
         deals = self._call(
             f"history {deal_id}", "history_deals_get", position=ticket, allow_empty=True
         ) or ()
-        exits = [
+        return self._summarise_deals([
             deal for deal in deals
             if int(_field(deal, "entry", -1)) in (DEAL_ENTRY_OUT, DEAL_ENTRY_OUT_BY)
-        ]
-        if not exits:
+        ])
+
+    def deal_details(self, reference: str) -> Optional[Dict[str, Any]]:
+        try:
+            ticket = int(reference)
+        except (TypeError, ValueError):
             return None
-        # Volume-weighted over every exit, in case it was closed in pieces.
-        volume = sum(float(_field(deal, "volume", 0.0)) for deal in exits)
-        if volume <= 0:
-            return float(_field(exits[-1], "price"))
-        return sum(
-            float(_field(deal, "price")) * float(_field(deal, "volume")) for deal in exits
-        ) / volume
+        deals = self._call(
+            f"deal {reference}", "history_deals_get", ticket=ticket, allow_empty=True
+        ) or ()
+        return self._summarise_deals(list(deals))
 
     # ------------------------------------------------------------------ capability probe
 

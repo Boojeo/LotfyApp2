@@ -791,7 +791,7 @@ class Supervisor:
         says how many of its numbers rest on an estimate rather than pretending
         the figure is exact.
         """
-        if trade.remaining_size <= 0 or self.store.has_fill(trade.deal_id, "BROKER"):
+        if trade.remaining_size <= 0:
             return
 
         # The quote cache is empty after a restart, which is exactly when this
@@ -802,10 +802,11 @@ class Supervisor:
         # Some brokers (MT5) keep the real fill in their deal history -- use it
         # when there, and only estimate when there is nothing better.
         try:
-            actual = self.broker.closing_price(trade.deal_id)
+            booked = self.broker.closing_details(trade.deal_id) or {}
         except Exception as exc:
             log.warning("%s: could not read the closing deal (%s)", trade.epic, exc)
-            actual = None
+            booked = {}
+        actual = booked.get("price")
         price = actual
         quote = self._quotes.get(trade.epic)
         if price is not None:
@@ -824,17 +825,44 @@ class Supervisor:
             log.warning("%s: pricing the exit from the stop level %s",
                         trade.epic, price)
 
+        stage = self._broker_exit_stage(trade, actual)
+        # The bot may already have booked earlier exits of this deal (a TP1
+        # partial, say); only this exact exit must not be recorded twice.
+        if self.store.has_fill(trade.deal_id, stage):
+            return
         fill = Fill(
-            deal_id=trade.deal_id, epic=trade.epic, ts=utcnow(), stage="BROKER",
+            deal_id=trade.deal_id, epic=trade.epic, ts=utcnow(),
+            stage=stage,
             size=trade.remaining_size, price=price,
             entry_price=trade.entry_price, direction=trade.direction,
             initial_risk=trade.initial_risk,
             fraction=min(1.0, trade.remaining_size / trade.initial_size)
             if trade.initial_size else 0.0,
             inferred=actual is None,
+            profit=booked.get("profit"), commission=booked.get("commission"),
+            swap=booked.get("swap"), broker_ref=str(booked.get("refs") or ""),
         )
         self.store.record_fill(fill)
         trade.realised = round(trade.realised + fill.r_multiple, 6)
+        trade.note = trade.note or f"closed at the broker ({fill.stage})"
+
+    def _broker_exit_stage(self, trade: ManagedTrade, price: Optional[float]) -> str:
+        """Name the exit after the target the broker filled, when it was one.
+
+        Each leg rests at its own target at the broker, so a leg closed there
+        while the bot was away is a TP hit and must count as one in the
+        journal's hit rates. Only a booked price counts -- an estimate cannot
+        prove a target traded.
+        """
+        if price is None:
+            return "BROKER"
+        stage = trade.leg_target or Stage.TP3
+        target = Supervisor.broker_target(trade)
+        # A take-profit fills at the target or better; allow a hair of rounding.
+        tolerance = abs(target) * 0.0002
+        if trade.direction.is_beyond(price, target - trade.direction.sign * tolerance):
+            return stage.value
+        return "BROKER"
 
     # ------------------------------------------------------------------ snapshots
 

@@ -93,3 +93,76 @@ class ManageDirectionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ActualFillTests(unittest.TestCase):
+    """The journal records what the broker booked, not the price we hoped for."""
+
+    def test_a_bot_close_is_journalled_at_the_booked_fill_with_money(self):
+        from tmbot.config import Config
+        from tmbot.manage.engine import TradeEngine
+        from tmbot.manage.rules import evaluate
+        from tmbot.notify.base import NullNotifier
+        from tmbot.store import Store
+        from tests.helpers import management, snapshot, trade
+        from tests.test_mt5 import FakeMT5, connected
+
+        broker, fake = connected(FakeMT5())
+        broker.probe_partial_close()
+        fake.slippage = 0.3            # filled 0.3 worse than quoted
+        fake.seed(101, volume=0.01, price=3400.0, sl=3390.0)
+        store = Store(":memory:")
+        config = Config()
+        config.management = management(exit_model="three_deals")
+        engine = TradeEngine(broker, store, config, NullNotifier())
+        first = trade(deal_id="101", epic="XAUUSDm", size=0.01,
+                      leg_index=0, leg_target=Stage.TP1)
+
+        engine.apply(first, evaluate(first, snapshot(3410.0, rules=broker.market_rules("XAUUSDm")),
+                                     config.management))
+
+        [fill] = store.fills_for("101")
+        self.assertEqual(fill.stage, "TP1")
+        self.assertAlmostEqual(fill.price, 3409.7, msg="the booked price, slippage included")
+        self.assertAlmostEqual(fill.profit, 9.7)
+        self.assertAlmostEqual(fill.commission, -0.07)
+        self.assertTrue(fill.broker_ref)
+
+
+class BrokerTargetJournalTests(unittest.TestCase):
+    def setUp(self):
+        self.supervisor, self.broker, self.store, _ = build_supervisor(
+            exit_model="three_deals"
+        )
+        self.supervisor.start()
+        for item in (leg("101", 0), leg("102", 1), leg("103", 2)):
+            self.broker.seed_position(item)
+        self.supervisor.tick()
+        self.supervisor.confirm(self.store.pending_trades()[0].short_id)
+        self.trades = {t.deal_id: t for t in self.store.active_trades()}
+
+    def close_at_broker(self, deal_id, price, **money):
+        self.broker.closing_details = lambda _id, p=price: {"price": p, **money}
+        del self.broker._positions[deal_id]
+        self.supervisor.tick()
+        return self.store.fills_for(deal_id)
+
+    def test_a_leg_closed_at_its_target_by_the_broker_counts_as_that_target(self):
+        tp1 = self.trades["101"].tp1
+        [fill] = self.close_at_broker("101", tp1, profit=12.5, commission=-0.7)
+        self.assertEqual(fill.stage, "TP1")
+        self.assertFalse(fill.inferred)
+        self.assertEqual(fill.profit, 12.5)
+
+    def test_a_stop_out_stays_a_broker_exit(self):
+        stop = self.trades["102"].sl
+        [fill] = self.close_at_broker("102", stop)
+        self.assertEqual(fill.stage, "BROKER")
+
+    def test_an_unknown_price_never_claims_a_target(self):
+        self.broker.closing_details = lambda _id: None
+        del self.broker._positions["101"]
+        self.supervisor.tick()
+        [fill] = self.store.fills_for("101")
+        self.assertEqual(fill.stage, "BROKER")
+        self.assertTrue(fill.inferred)

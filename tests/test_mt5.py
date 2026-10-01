@@ -63,6 +63,7 @@ class FakeMT5:
         self.open = {}
         self.history = []
         self._next_deal = 900
+        self.slippage = 0.0
 
     # -- plumbing
     def _fail(self, name):
@@ -152,9 +153,17 @@ class FakeMT5:
             return SimpleNamespace(retcode=10036, comment="closed", order=0, deal=0,
                                    request_id=1)
         self._next_deal += 1
+        # Fills a little worse than requested, like a real market order can,
+        # and books money the way MT5 does.
+        fill_price = request["price"] - self.slippage if held.type == 0 else (
+            request["price"] + self.slippage
+        )
+        move = (fill_price - held.price_open) * (1 if held.type == 0 else -1)
         self.history.append(SimpleNamespace(
             position_id=held.ticket, entry=1, volume=request["volume"],
-            price=request["price"], ticket=self._next_deal,
+            price=fill_price, ticket=self._next_deal,
+            profit=round(move * 100 * request["volume"], 2),
+            commission=-0.07 * request["volume"] * 100, swap=0.0,
         ))
         held.volume = round(held.volume - request["volume"], 8)
         if held.volume <= 0:
@@ -162,7 +171,9 @@ class FakeMT5:
         return SimpleNamespace(retcode=10009, comment="done", order=self._next_deal,
                                deal=self._next_deal, request_id=8)
 
-    def history_deals_get(self, position=None, **kwargs):
+    def history_deals_get(self, position=None, ticket=None, **kwargs):
+        if ticket is not None:
+            return tuple(deal for deal in self.history if deal.ticket == ticket)
         return tuple(deal for deal in self.history if deal.position_id == position)
 
 

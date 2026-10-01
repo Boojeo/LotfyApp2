@@ -165,7 +165,7 @@ class TradeEngine:
         else:  # pragma: no cover - the enum is exhaustive
             raise NotSupportedError(f"unhandled decision kind {decision.kind}")
 
-        self._record_local_state(trade, decision, before=before)
+        self._record_local_state(trade, decision, before=before, reference=reference)
         return reference
 
     @staticmethod
@@ -179,7 +179,19 @@ class TradeEngine:
             return "MANUAL"
         return "CLOSE"
 
-    def _record_fill(self, trade: ManagedTrade, decision: Decision) -> None:
+    def _booked(self, reference: Optional[str]) -> Optional[Dict[str, Any]]:
+        """What the broker actually booked for this order, if it can say."""
+        if not reference or self.config.dry_run:
+            return None
+        try:
+            return self.broker.deal_details(reference)
+        except Exception as exc:  # the journal must not cost us the exit
+            log.warning("could not read the booked deal %s (%s)", reference, exc)
+            return None
+
+    def _record_fill(
+        self, trade: ManagedTrade, decision: Decision, reference: Optional[str] = None
+    ) -> None:
         """Log what this exit earned, in R.
 
         Without this there is no way to answer "is this working?" -- and the
@@ -191,18 +203,29 @@ class TradeEngine:
         stage = self._fill_stage(decision)
         if self.store.has_fill(trade.deal_id, stage):
             return  # already recorded; a replay must not double-count
+        # The quote we decided on is only the price we hoped for; the broker's
+        # booked deal is what actually happened, slippage and all.
+        booked = self._booked(reference) or {}
+        size = booked.get("volume") or decision.size
         fill = Fill(
             deal_id=trade.deal_id, epic=trade.epic, ts=utcnow(), stage=stage,
-            size=decision.size, price=decision.exit_price,
+            size=size, price=booked.get("price", decision.exit_price),
             entry_price=trade.entry_price, direction=trade.direction,
             initial_risk=trade.initial_risk,
-            fraction=min(1.0, decision.size / trade.initial_size),
+            fraction=min(1.0, size / trade.initial_size),
+            profit=booked.get("profit"), commission=booked.get("commission"),
+            swap=booked.get("swap"), broker_ref=str(booked.get("refs") or reference or ""),
         )
         self.store.record_fill(fill)
         trade.realised = round(trade.realised + fill.r_multiple, 6)
 
     def _record_local_state(
-        self, trade: ManagedTrade, decision: Decision, *, before: Optional[float] = None
+        self,
+        trade: ManagedTrade,
+        decision: Decision,
+        *,
+        before: Optional[float] = None,
+        reference: Optional[str] = None,
     ) -> None:
         """Advance our own flags so the ladder cannot fire the same rung twice.
 
@@ -211,7 +234,7 @@ class TradeEngine:
         updated the size, subtracting the partial again would count it twice.
         """
         if decision.kind in (DecisionKind.PARTIAL_CLOSE, DecisionKind.CLOSE_ALL):
-            self._record_fill(trade, decision)
+            self._record_fill(trade, decision, reference)
         if decision.kind is DecisionKind.PARTIAL_CLOSE and decision.stage:
             if decision.stage.value == "TP1":
                 trade.tp1_done = True
