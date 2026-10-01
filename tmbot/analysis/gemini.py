@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -141,11 +142,18 @@ def failure(status: str, reason: str, model: str) -> Dict[str, Any]:
 
 class GeminiReviewer:
     def __init__(self, config: GeminiConfig, session: Optional[requests.Session] = None,
-                 clock=time.monotonic):
+                 clock=time.monotonic, sleep=time.sleep):
         self.config = config
         self._http = session or requests.Session()
         self._clock = clock
+        self._sleep = sleep
         self._cache: Dict[Tuple[str, str, str], Tuple[float, Dict[str, Any]]] = {}
+        # One question at a time: the daily report and a Telegram /now can
+        # ask together, and a burst is exactly what trips the rate limit.
+        self._lock = threading.Lock()
+        self._last_call: Optional[float] = None
+        self._paused_until = 0.0
+        self._pause_reason = ""
 
     def review(self, plan: TradePlan, candles: List[Candle], *,
                display: str = "", digits: int = 2) -> Dict[str, Any]:
@@ -160,7 +168,23 @@ class GeminiReviewer:
             return dict(cached[1], cached=True)
 
         prompt = build_prompt(plan, candles[-self.config.bars:], display or plan.epic, digits)
-        result = self._ask(prompt)
+        with self._lock:
+            now = self._clock()
+            if now < self._paused_until:
+                # Asking again inside the limit only fails again and can push
+                # a per-minute block into a longer one. Say when it resumes.
+                wait = int(self._paused_until - now) + 1
+                return failure(RATE_LIMITED,
+                               f"{self._pause_reason} -- paused, next try in {wait}s", model)
+            if self._last_call is not None:
+                gap = self._last_call + self.config.min_interval_seconds - now
+                if gap > 0:
+                    self._sleep(min(gap, self.config.min_interval_seconds))
+            result = self._ask(prompt)
+            self._last_call = self._clock()
+            if result.get("status") == RATE_LIMITED:
+                self._paused_until = self._clock() + float(result.pop("pause_seconds", 60.0))
+                self._pause_reason = result.get("reason", "rate limited")
         if result.get("status") == OK:
             result["agreement"] = agreement(plan.bias, result.get("technical_direction", ""))
             self._cache[key] = (self._clock(), result)
@@ -226,10 +250,52 @@ def _http_failure(response: requests.Response, model: str) -> Dict[str, Any]:
     if code in (401, 403) or "api key" in text.lower() or "API_KEY_INVALID" in text:
         return failure(BAD_KEY, "the API key was refused -- check GEMINI_API_KEY", model)
     if code == 429:
-        return failure(RATE_LIMITED, "rate limit or quota reached", model)
+        reason, pause = _quota_reason(response, model)
+        return dict(failure(RATE_LIMITED, reason, model), pause_seconds=pause)
     if code == 404:
         return failure(ERROR, f"model {model!r} not found -- check gemini.model", model)
     return failure(ERROR, f"HTTP {code} {text[:120]}", model)
+
+
+def _quota_reason(response: requests.Response, model: str) -> Tuple[str, float]:
+    """Which limit was hit, in words, and how long to stay quiet.
+
+    Google says which quota (per minute, per day, or none at all on the free
+    tier) and often when to retry; that decides between "wait a minute" and
+    "this will not work today -- change the model or turn on billing".
+    """
+    try:
+        error = response.json().get("error", {}) or {}
+    except ValueError:
+        error = {}
+    message = str(error.get("message", ""))
+    retry: Optional[float] = None
+    quotas: List[str] = []
+    for detail in error.get("details") or []:
+        kind = str(detail.get("@type", ""))
+        if kind.endswith("RetryInfo"):
+            found = re.match(r"([\d.]+)s", str(detail.get("retryDelay", "")))
+            if found:
+                retry = float(found.group(1))
+        if kind.endswith("QuotaFailure"):
+            for violation in detail.get("violations") or []:
+                quotas.append(str(violation.get("quotaId") or violation.get("quotaMetric") or ""))
+    if retry is None:
+        found = re.search(r"retry in ([\d.]+)\s*s", message, flags=re.IGNORECASE)
+        retry = float(found.group(1)) if found else None
+    seen = " ".join(quotas + [message]).lower()
+
+    if re.search(r"limit:\s*0\b", message):
+        return (f"model {model} has no free quota on this key (limit 0) -- set "
+                "gemini.model to another model, or turn on billing in Google AI Studio",
+                3600.0)
+    if "perday" in seen or "per_day" in seen or "per day" in seen or "daily" in seen:
+        return ("the daily free quota is used up -- it resets every 24h; or turn on "
+                "billing in Google AI Studio", max(retry or 0.0, 3600.0))
+    if "search" in seen or "grounding" in seen:
+        return ("the Google Search (news) quota is used up -- set gemini.search_news: "
+                "false to keep the technical second opinion", max(retry or 0.0, 3600.0))
+    return ("the per-minute limit was reached", retry if retry else 60.0)
 
 
 def _parse(response: requests.Response, model: str) -> Dict[str, Any]:

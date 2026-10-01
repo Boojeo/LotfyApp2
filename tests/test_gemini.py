@@ -65,10 +65,12 @@ def plan_for(bias=Bias.BEARISH):
     return plan
 
 
-def reviewer(*replies, clock=None, **config):
+def reviewer(*replies, clock=None, sleeps=None, **config):
     settings = GeminiConfig(api_key=KEY, **config)
     session = FakeSession(*replies)
-    return gemini.GeminiReviewer(settings, session, clock=clock or (lambda: 0.0)), session
+    nap = sleeps.append if sleeps is not None else (lambda seconds: None)
+    return gemini.GeminiReviewer(settings, session, clock=clock or (lambda: 0.0),
+                                 sleep=nap), session
 
 
 class AnswerTests(unittest.TestCase):
@@ -180,6 +182,64 @@ class CostTests(unittest.TestCase):
         plan = plan_for()
         self.assertEqual(review.review(plan, [])["status"], "TIMEOUT")
         self.assertEqual(review.review(plan, [])["status"], "OK")
+
+
+def quota_error(message, quota_id="", retry=None):
+    details = []
+    if quota_id:
+        details.append({"@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                        "violations": [{"quotaId": quota_id}]})
+    if retry:
+        details.append({"@type": "type.googleapis.com/google.rpc.RetryInfo",
+                        "retryDelay": retry})
+    return Reply(429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED",
+                                 "message": message, "details": details}})
+
+
+class RateLimitTests(unittest.TestCase):
+    """Free keys allow a few requests a minute: pace, explain, and back off."""
+
+    def test_after_a_limit_it_waits_the_time_google_asks_for(self):
+        now = [0.0]
+        review, session = reviewer(
+            quota_error("Quota exceeded. Please retry in 33s.",
+                        "GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "33s"),
+            answer(), clock=lambda: now[0])
+        plan = plan_for()
+        first = review.review(plan, [])
+        self.assertEqual(first["status"], "RATE_LIMITED")
+        self.assertIn("per-minute", first["reason"])
+
+        now[0] = 10.0
+        second = review.review(plan, [])
+        self.assertEqual(second["status"], "RATE_LIMITED")
+        self.assertIn("next try in", second["reason"])
+        self.assertEqual(len(session.calls), 1, "no call while paused")
+
+        now[0] = 40.0
+        self.assertEqual(review.review(plan, [])["status"], "OK")
+
+    def test_the_daily_quota_says_so(self):
+        result = reviewer(quota_error(
+            "You exceeded your current quota.",
+            "GenerateRequestsPerDayPerProjectPerModel-FreeTier"))[0].review(plan_for(), [])
+        self.assertIn("daily free quota", result["reason"])
+
+    def test_a_model_without_free_quota_says_to_change_it(self):
+        result = reviewer(quota_error(
+            "Quota exceeded for metric: generate_content_free_tier_requests, limit: 0, "
+            "model: gemini-3.5-flash"))[0].review(plan_for(), [])
+        self.assertIn("no free quota", result["reason"])
+        self.assertIn("gemini.model", result["reason"])
+
+    def test_questions_are_spaced_out_not_fired_in_a_burst(self):
+        sleeps = []
+        review, _ = reviewer(answer(), answer(), sleeps=sleeps)
+        review.review(plan_for(Bias.BEARISH), [])
+        other = plan_for(Bias.BULLISH)
+        other.epic = "SILVER"                       # a different question, not cached
+        review.review(other, [])
+        self.assertEqual(sleeps, [6.0])
 
 
 class SafetyTests(unittest.TestCase):

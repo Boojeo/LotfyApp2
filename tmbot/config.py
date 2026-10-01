@@ -317,6 +317,10 @@ class GeminiConfig:
     # The same instrument, side and style within this window reuses the
     # last answer instead of paying for an identical call.
     cache_minutes: float = 5.0
+    # Free keys allow only a few requests a minute. Questions are spaced at
+    # least this far apart, and after a limit is hit the bot waits the time
+    # Google asks for instead of failing again.
+    min_interval_seconds: float = 6.0
     bars: int = 48   # recent candles sent for its own read
 
     @property
