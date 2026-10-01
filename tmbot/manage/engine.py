@@ -238,7 +238,14 @@ class TradeEngine:
                 trade.breakeven_done = True
             if decision.key.startswith(f"{trade.deal_id}:trail:"):
                 trade.trailing_active = True
-        elif decision.kind is DecisionKind.SET_TARGET and decision.profit_level is not None:
+        elif (
+            decision.kind is DecisionKind.SET_TARGET
+            and decision.profit_level is not None
+            and ":extend:" in decision.key
+        ):
+            # Only an extension moves TP3. Placing a leg's own target at
+            # adoption (TP1 on leg 1, say) must not rewrite TP3 or use up one
+            # of the extensions.
             trade.tp3 = decision.profit_level
             trade.tp3_extensions += 1
 

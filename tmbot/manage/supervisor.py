@@ -58,6 +58,17 @@ LAST_REPORT_KEY = "last_daily_report"
 LAST_REFRESH_KEY = "last_intraday_refresh"
 
 
+def _opening_order(position: BrokerPosition) -> tuple:
+    """Sort key: opening time, then the broker's ticket as a tie-breaker.
+
+    Three deals placed within a second can share a timestamp; MT5 tickets
+    increase with each deal, so the ticket settles the order deterministically.
+    """
+    opened = position.created_at.timestamp() if position.created_at else float("inf")
+    ticket = position.deal_id
+    return (opened, 0, int(ticket), "") if ticket.isdigit() else (opened, 1, 0, ticket)
+
+
 @dataclass
 class _CachedCandles:
     fetched_at: float
@@ -161,7 +172,10 @@ class Supervisor:
 
     def _detect_new_positions(self, positions: List[BrokerPosition]) -> None:
         known = self.store.known_deal_ids()
-        for position in positions:
+        # Legs are numbered in the order the deals were OPENED, never in the
+        # order the broker happens to list them: list order is not guaranteed,
+        # and whichever deal is seen first becomes leg 1 and gets TP1.
+        for position in sorted(positions, key=_opening_order):
             if position.deal_id in known:
                 continue
             try:
@@ -388,8 +402,24 @@ class Supervisor:
         self.store.log_event("declined", "declined by user", deal_id=trade.deal_id, epic=trade.epic)
         return self.t("adoption.declined", epic=trade.epic, id=trade.short_id)
 
+    @staticmethod
+    def broker_target(trade: ManagedTrade) -> float:
+        """The take-profit this deal carries at the broker.
+
+        In a three-deal basket each leg exits at its OWN target: leg 1 at TP1,
+        leg 2 at TP2, leg 3 at TP3. Putting TP3 on every leg meant that with
+        the bot down, legs 1 and 2 rode past their targets toward TP3 -- the
+        broker-side order is the protection that does not depend on the bot.
+        """
+        stage = trade.leg_target
+        if stage is Stage.TP1:
+            return trade.tp1
+        if stage is Stage.TP2:
+            return trade.tp2
+        return trade.tp3
+
     def _apply_initial_protection(self, trade: ManagedTrade) -> List[str]:
-        """Put the plan's stop and final target on the position we just adopted."""
+        """Put the plan's stop and this deal's own target on the adopted position."""
         decisions: List[Decision] = []
         if trade.stop_level is None or abs(trade.stop_level - trade.sl) > 1e-9:
             decisions.append(Decision(
@@ -405,10 +435,10 @@ class Supervisor:
             kind=DecisionKind.SET_TARGET,
             deal_id=trade.deal_id,
             key=f"{trade.deal_id}:initial_target",
-            reason=f"final target from plan {trade.plan_id}",
+            reason=f"target from plan {trade.plan_id}",
             reason_key="reason.initial_target",
             reason_args={"plan_id": trade.plan_id},
-            profit_level=trade.tp3,
+            profit_level=self.broker_target(trade),
         ))
         return self.engine.apply(trade, Evaluation(decisions=decisions, blocked=[]))
 
@@ -435,7 +465,9 @@ class Supervisor:
         if trade is None:
             for position in self.broker.positions():
                 if position.deal_id.endswith(short_id):
-                    plan = self._plan_for(position.epic)
+                    # Levels must belong to the side actually traded, or the
+                    # stop can land on the wrong side of the entry.
+                    plan = self._plan_for(position.epic, direction=position.direction)
                     trade = ManagedTrade.from_position(position, plan)
                     break
         if trade is None:
