@@ -69,6 +69,10 @@ management:
 
   # Both models: stop goes to the exact entry price the moment TP1 trades.
   # In three_deals mode that applies to every leg still open.
+  # When the 1% risk limit only allows fewer deals:
+  two_leg_targets: [TP1, TP3]   # deal 1 banks TP1, deal 2 rides to TP3
+  one_leg_targets: [TP1]
+
   breakeven_stage: TP1
   breakeven_offset_r: 0.0
 
@@ -160,6 +164,17 @@ llm:
   enabled: true
   model: claude-opus-5
 
+# Gemini second opinion. Turned on by GEMINI_API_KEY in .env. It reads the
+# same data and gives its own view on /now <symbol>, /report and the daily
+# report, shown AFTER the bot's analysis with ALIGNED / CONFLICT / UNCERTAIN.
+# It never changes a level, a lot size or the verdict. If it does not answer,
+# Telegram says why (TIMEOUT, BAD_KEY, RATE_LIMITED, ...).
+gemini:
+  model: gemini-3.5-flash
+  timeout: 25.0
+  search_news: true        # news via Google Search; never guessed without it
+  cache_minutes: 5.0
+
 telegram:
   enabled: false                  # auto-enables when the token and chat id are set
   poll_seconds: 3.0
@@ -180,7 +195,10 @@ report:
   chart_timeframe: H1
   chart_bars: 120
 
-  # Every report suggests a lot size per deal that loses this share of your
-  # balance if the stop is hit (wider stop -> fewer lots). 0 turns it off.
-  # Needs a broker that publishes contract values (MetaTrader 5 does).
+  # HARD RISK LIMIT: the whole trade -- all deals together -- may lose at most
+  # this share of account EQUITY if the stop is hit (spread included). The
+  # stop itself stays technical; this only sizes the lots. When the broker's
+  # minimum lot makes 3 deals too big, fewer deals are advised; when even 1
+  # deal at the minimum is too big, the verdict is REJECTED -- RISK LIMIT.
+  # 0 turns the check off. Needs MetaTrader 5 (it publishes contract values).
   risk_percent: 1.0

@@ -293,6 +293,11 @@ break-even move still happens.
 
 ### The basket (`three_deals`)
 
+Each deal rests at the broker with **its own** take-profit — deal 1 at TP1,
+deal 2 at TP2, deal 3 at TP3 — so the targets hold even while the bot is off.
+Deals are numbered by opening time (ticket as tie-breaker), never by the order
+the broker lists them.
+
 Each deal carries one target and is closed in full with a plain
 `DELETE /positions/{dealId}` — no size field, no ambiguity. That sidesteps the
 partial-close uncertainty below entirely, which makes this the more robust
@@ -374,6 +379,48 @@ bar 14:00  HH 3438.2  ATR 6.1  ADX 31 (strong)  k=2.5
 bar 14:15  HH 3441.0  ADX 24 (cooling)   k=3.0
    chandelier 3422.7 < current SL        ->  hold 3423.0
 ```
+
+### How a decision is made
+
+The bot never opens a trade, so its "decision" is advice for the deal you
+place, shown in every report and `/now`:
+
+```
+MARKET DATA -> TECHNICAL ENGINE -> DIRECTION -> ENTRY QUALITY (+ higher timeframe)
+  -> LEVELS (SL from structure/ATR, TP1-3) -> HARD RISK LIMIT -> VERDICT
+  -> then, separately: GEMINI SECOND OPINION
+```
+
+- **Direction** comes from two pooled categories — *trend* (EMA position,
+  EMA cross, EMA slope, ADX direction) and *momentum* (MACD, RSI, momentum) —
+  with one vote each (60/40). Correlated indicators no longer stack.
+  The number shown is **signal strength**, not a probability of winning.
+- **Entry quality** is separate: GOOD / WEAK / POOR, with the reasons —
+  price stretched from its average, a level in the way before TP1, stretched
+  RSI, TP1 pushed past structure, wide spread. The higher timeframe is read on
+  its own: ALIGNED / PARTIAL / CONFLICT. A conflict lowers quality instead of
+  being averaged into the score.
+- **Hard risk limit** (`report.risk_percent`, default 1%): all deals
+  together may lose at most that share of **equity** at the stop, spread
+  included, using the broker's contract value, minimum, step and maximum lot.
+  The stop is never moved to make size fit. If 3 deals at the broker minimum
+  would be over the limit, 2 are advised (TP1 / TP3), then 1 (TP1); if even
+  one is over, the verdict is **REJECTED — RISK LIMIT**. Before you
+  `/confirm`, the bot shows what the deals you actually opened lose at their
+  stops and warns loudly if that is over the limit.
+- **Verdict**: risk first, then direction, then quality — APPROVED, CAUTION
+  or REJECTED. Signal strength plays no part.
+- **Gemini** (with `GEMINI_API_KEY`) gives its own read — direction, entry,
+  fundamentals and news via Google Search — *after* the bot's, marked
+  ALIGNED / CONFLICT / UNCERTAIN. It cannot change a level, a size or the
+  verdict. If it does not answer, Telegram says why (TIMEOUT, BAD_KEY,
+  RATE_LIMITED, NETWORK, NO_ANSWER, MALFORMED). News it cannot verify by search
+  is reported UNAVAILABLE, never guessed.
+
+Every analysis is stored with all of the above (`plans` table) and every exit
+with the broker's booked price, profit, commission, swap and deal number
+(`fills`), so performance by symbol, style, strength band, verdict and Gemini
+agreement can be measured once enough real trades exist.
 
 ### Trade style: how long a trade is planned for
 
