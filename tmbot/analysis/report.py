@@ -14,6 +14,7 @@ from ..models import Bias, Direction, TradePlan, utcnow
 from . import bias as bias_module
 from . import fundamental as fundamental_module
 from . import news as news_module
+from . import quality as quality_module
 from . import style as style_module
 from .levels import build_plan
 
@@ -108,6 +109,22 @@ class ReportBuilder:
             self.broker, self.config, rules, abs(reference - level_plan.sl),
             spread=quote.spread,
         )
+
+        # The higher timeframe gives context; it is read on its own and
+        # compared, never averaged into the entry timeframe's score.
+        higher = None
+        if len(structure) >= 60:
+            higher = bias_module.analyse(
+                structure, analysis, management=self.config.management
+            ).bias
+        assessment = quality_module.assess(
+            bias=combined, direction=direction, price=reference, atr=level_plan.atr,
+            ema_fast=technical.ema_fast, rsi=technical.rsi, stop=level_plan.sl,
+            tp1=level_plan.tp1, levels=level_plan.levels, spread=quote.spread,
+            tp1_pushed=any(note.startswith("TP1 pushed") for note in level_plan.notes),
+            higher_timeframe=profile.structure_timeframe, higher_bias=higher,
+            risk_verdict=sizing.get("verdict") if sizing else None,
+        )
         return TradePlan(
             epic=epic,
             created_at=utcnow(),
@@ -129,6 +146,7 @@ class ReportBuilder:
             plan_id=f"{epic}-{utcnow():%Y%m%d}-{uuid.uuid4().hex[:6]}",
             style=choice.to_dict(),
             sizing=sizing,
+            assessment=assessment.to_dict(),
         )
 
     # ------------------------------------------------------------------ rendering
@@ -182,6 +200,10 @@ def render_markdown(plan: TradePlan, t: Optional[Translator] = None) -> str:
         "**" + t("report.bias", bias=t.bias_name(plan.bias),
                  confidence=f"{plan.confidence:.0f}") + "**",
     ]
+    judged = assessment_lines(plan, t)
+    if judged:
+        lines += [""] + ["**" + judged[0] + "**"] + judged[1:]
+    lines += ["", "_" + t("report.strength_note") + "_"]
     styled = style_lines(plan, t)
     if styled:
         lines += [""] + styled
@@ -283,6 +305,28 @@ def style_lines(plan: TradePlan, t: Translator) -> List[str]:
     return lines
 
 
+def assessment_lines(plan: TradePlan, t: Translator) -> List[str]:
+    """Verdict, entry quality and timeframe alignment -- kept apart from direction."""
+    found = plan.assessment
+    if not found:
+        return []
+    verdict = found.get("verdict", "")
+    lines = [t("verdict.line", verdict=t.term("verdict", verdict),
+               reason=t(found.get("verdict_key") or "verdict.weak_entry"))]
+    reasons = [t(f"quality.flag.{flag['key']}", **flag.get("args", {}))
+               for flag in found.get("flags", [])]
+    lines.append(t("quality.line", quality=t.term("quality", found.get("quality", "")),
+                   reasons=(" -- " + t.semicolon.join(reasons)) if reasons else ""))
+    if found.get("higher_bias"):
+        lines.append(t(
+            "alignment.line", higher=found.get("higher_timeframe", ""),
+            higher_bias=t.bias_name(found["higher_bias"]),
+            entry=(plan.style or {}).get("entry", ""), bias=t.bias_name(plan.bias),
+            alignment=t.term("alignment", found.get("alignment", "")),
+        ))
+    return lines
+
+
 def sizing_lines(plan: TradePlan, t: Translator) -> List[str]:
     """Lots per deal that keep a stop-out to the configured share of the balance."""
     sizing = plan.sizing
@@ -319,6 +363,7 @@ def render_text(plan: TradePlan, t: Optional[Translator] = None) -> str:
     lines = [
         t("report.bias", bias=t.bias_name(plan.bias), confidence=f"{plan.confidence:.0f}")
         + (t("report.advisory_tag") if plan.advisory_only else ""),
+        *assessment_lines(plan, t),
         *style_lines(plan, t),
         t("report.reference", price=plan.reference_price,
           atr=f"{plan.atr:.4f}", risk=f"{plan.risk:.4f}"),

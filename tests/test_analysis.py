@@ -122,3 +122,35 @@ class BiasTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DoubleCountingTests(unittest.TestCase):
+    """Correlated indicators share one vote; location is not direction."""
+
+    @staticmethod
+    def factors(**values):
+        from tmbot.analysis.bias import Factor
+        names = ("trend_structure", "ema_cross", "ema_slope", "adx_direction",
+                 "macd", "rsi", "momentum", "range_position")
+        return [Factor(name, values.get(name, 0.0), 1.0) for name in names]
+
+    def test_four_views_of_one_trend_cannot_outvote_momentum(self):
+        from tmbot.analysis.bias import direction_score
+        trend_only, _ = direction_score(self.factors(
+            trend_structure=1, ema_cross=1, ema_slope=1, adx_direction=1))
+        self.assertAlmostEqual(trend_only, 60.0, msg="the whole trend family is one 60% vote")
+        against, _ = direction_score(self.factors(
+            trend_structure=1, ema_cross=1, ema_slope=1, adx_direction=1,
+            macd=-1, rsi=-1, momentum=-1))
+        self.assertAlmostEqual(against, 20.0)
+
+    def test_where_price_sits_in_its_range_does_not_change_direction(self):
+        from tmbot.analysis.bias import direction_score
+        top, _ = direction_score(self.factors(trend_structure=0.5, macd=0.5, range_position=1))
+        bottom, _ = direction_score(self.factors(trend_structure=0.5, macd=0.5, range_position=-1))
+        self.assertEqual(top, bottom)
+
+    def test_signal_strength_is_bounded_and_reported_by_category(self):
+        read = analyse(candles(300, drift=1.2, wave=1.0), AnalysisConfig())
+        self.assertTrue(0 <= read.confidence <= 100)
+        self.assertEqual(set(read.categories), {"trend", "momentum", "location"})

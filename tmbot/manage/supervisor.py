@@ -24,6 +24,7 @@ from ..analysis import risk as risk_module
 from ..analysis import style as style_module
 from ..analysis.report import (
     ReportBuilder,
+    assessment_lines,
     render_markdown,
     render_text,
     sizing_lines,
@@ -784,6 +785,7 @@ class Supervisor:
                    confidence=f"{plan.confidence:.0f}")
             + (self.t("report.advisory_tag") if plan.advisory_only else "")
         )
+        lines += assessment_lines(plan, self.t)
         lines += style_lines(plan, self.t)
         lines.append(self.t("now.levels", tp1=gap(plan.tp1), tp2=gap(plan.tp2),
                             tp3=gap(plan.tp3), sl=gap(plan.sl)))

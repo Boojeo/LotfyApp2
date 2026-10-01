@@ -718,8 +718,8 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "ar": "{epic} — الخطة اليومية {timestamp}",
     },
     "report.bias": {
-        "en": "Direction bias: {bias}  (confidence {confidence}/100)",
-        "ar": "الاتجاه المتوقع: {bias}  (درجة الثقة {confidence}/100)",
+        "en": "Direction bias: {bias}  (signal strength {confidence}/100)",
+        "ar": "الاتجاه المتوقع: {bias}  (قوة الإشارة {confidence}/100)",
     },
     "report.advisory": {
         "en": (
@@ -789,6 +789,91 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "ar": "تحذير: صفقاتك ({deals}) تخسر {money} عند الوقف = {percent}% من رأس المال "
               "-- أكثر من حدك {limit}%. فكّر في إغلاق صفقة أو تقليل الحجم.",
     },
+    "report.strength_note": {
+        "en": "Signal strength measures how strong and consistent the evidence is. "
+              "It is not a probability of winning.",
+        "ar": "قوة الإشارة تقيس قوة الأدلة واتساقها، وليست احتمال ربح الصفقة.",
+    },
+    "verdict.line": {"en": "VERDICT: {verdict} -- {reason}", "ar": "الحكم: {verdict} -- {reason}"},
+    "verdict.approved": {
+        "en": "direction, entry and risk all check out",
+        "ar": "الاتجاه ونقطة الدخول والمخاطرة كلها سليمة",
+    },
+    "verdict.weak_entry": {
+        "en": "the direction is clear but the entry is weak",
+        "ar": "الاتجاه واضح لكن نقطة الدخول ضعيفة",
+    },
+    "verdict.poor_entry": {
+        "en": "poor entry -- wait for a better location",
+        "ar": "نقطة دخول سيئة -- انتظر موقعًا أفضل",
+    },
+    "verdict.no_direction": {
+        "en": "no clear direction",
+        "ar": "لا يوجد اتجاه واضح",
+    },
+    "verdict.risk_limit": {
+        "en": "the risk limit cannot be met",
+        "ar": "لا يمكن الالتزام بحد المخاطرة",
+    },
+    "verdict.risk_unchecked": {
+        "en": "the risk check could not be made",
+        "ar": "تعذّر التحقق من المخاطرة",
+    },
+    "term.verdict.approved": {"en": "APPROVED", "ar": "مقبولة"},
+    "term.verdict.caution": {"en": "CAUTION", "ar": "بحذر"},
+    "term.verdict.rejected": {"en": "REJECTED", "ar": "مرفوضة"},
+    "quality.line": {
+        "en": "Entry quality: {quality}{reasons}",
+        "ar": "جودة نقطة الدخول: {quality}{reasons}",
+    },
+    "term.quality.good": {"en": "GOOD", "ar": "جيدة"},
+    "term.quality.weak": {"en": "WEAK", "ar": "ضعيفة"},
+    "term.quality.poor": {"en": "POOR", "ar": "سيئة"},
+    "term.quality.none": {"en": "n/a (no direction)", "ar": "غير متاحة (لا اتجاه)"},
+    "quality.flag.timeframe_conflict": {
+        "en": "{timeframe} points the other way ({bias})",
+        "ar": "الإطار {timeframe} في الاتجاه المعاكس ({bias})",
+    },
+    "quality.flag.timeframe_partial": {
+        "en": "{timeframe} has no clear direction",
+        "ar": "الإطار {timeframe} بلا اتجاه واضح",
+    },
+    "quality.flag.against_bias": {
+        "en": "levels are for the side against the {bias} analysis",
+        "ar": "المستويات للجهة المعاكسة للتحليل {bias}",
+    },
+    "quality.flag.extended": {
+        "en": "price already stretched {atr} ATR from its average",
+        "ar": "السعر ممتد بالفعل {atr} ATR عن متوسطه",
+    },
+    "quality.flag.near_level": {
+        "en": "a level at {level} is in the way ({atr} ATR)",
+        "ar": "يوجد مستوى عند {level} في الطريق ({atr} ATR)",
+    },
+    "quality.flag.rsi_stretched": {
+        "en": "RSI {rsi} already stretched",
+        "ar": "مؤشر RSI عند {rsi} ممتد بالفعل",
+    },
+    "quality.flag.tp1_pushed": {
+        "en": "TP1 had to be pushed past the nearest level for enough reward",
+        "ar": "دُفع الهدف الأول بعد أقرب مستوى للحصول على عائد كافٍ",
+    },
+    "quality.flag.wide_spread": {
+        "en": "spread is {share} of the stop distance",
+        "ar": "الفارق يساوي {share} من مسافة الوقف",
+    },
+    "quality.flag.risk_limit": {
+        "en": "risk limit cannot be met",
+        "ar": "لا يمكن الالتزام بحد المخاطرة",
+    },
+    "alignment.line": {
+        "en": "Timeframes: {higher} {higher_bias} vs {entry} {bias} -> {alignment}",
+        "ar": "الأطر الزمنية: {higher} {higher_bias} مقابل {entry} {bias} ← {alignment}",
+    },
+    "term.alignment.aligned": {"en": "ALIGNED", "ar": "متوافقة"},
+    "term.alignment.partial": {"en": "PARTIAL", "ar": "توافق جزئي"},
+    "term.alignment.conflict": {"en": "CONFLICT", "ar": "متعارضة"},
+    "term.alignment.uncertain": {"en": "UNCERTAIN", "ar": "غير مؤكدة"},
     "report.levels_heading": {"en": "Levels", "ar": "المستويات"},
     "report.col_level": {"en": "Level", "ar": "المستوى"},
     "report.col_price": {"en": "Price", "ar": "السعر"},
@@ -829,8 +914,8 @@ CATALOG: Dict[str, Dict[str, str]] = {
     },
     "report.update_heading": {"en": "{epic} plan update:", "ar": "تحديث خطة {epic}:"},
     "report.update_bias": {
-        "en": "bias {old} -> {new} (confidence {confidence})",
-        "ar": "الاتجاه {old} ← {new} (درجة الثقة {confidence})",
+        "en": "bias {old} -> {new} (signal strength {confidence})",
+        "ar": "الاتجاه {old} ← {new} (قوة الإشارة {confidence})",
     },
     "report.update_levels": {
         "en": "New levels: SL {sl} | TP1 {tp1} TP2 {tp2} TP3 {tp3}",

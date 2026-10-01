@@ -44,6 +44,7 @@ class TechnicalRead:
     ema_slow: float
     ema_trend: float
     factors: List[Factor] = field(default_factory=list)
+    categories: Dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -59,6 +60,7 @@ class TechnicalRead:
             "ema_slow": round(self.ema_slow, 6),
             "ema_trend": round(self.ema_trend, 6),
             "factors": [factor.to_dict() for factor in self.factors],
+            "categories": self.categories,
         }
 
 
@@ -166,8 +168,12 @@ def analyse(
         f"{lookback}-bar change {price - closes[-1 - lookback]:+.4f}",
     ))
 
-    total_weight = sum(factor.weight for factor in factors)
-    score = sum(factor.value * factor.weight for factor in factors) / total_weight * 100.0
+    # Correlated indicators are pooled, not stacked. EMA position, EMA cross,
+    # EMA slope and ADX direction all describe ONE thing -- the trend -- and
+    # used to carry 63% of the score between them, so a single trend counted
+    # four times. Each category now gets one vote; price location within the
+    # range is not direction at all and moves to entry quality.
+    score, categories = direction_score(factors)
 
     if score >= 20:
         bias = Bias.BULLISH
@@ -176,14 +182,15 @@ def analyse(
     else:
         bias = Bias.NEUTRAL
 
-    # Agreement across factors matters as much as the headline score: eight
-    # weak-but-aligned readings beat one extreme outlier.
-    aligned = sum(
-        factor.weight for factor in factors
-        if (factor.value > 0.05 and score > 0) or (factor.value < -0.05 and score < 0)
-    )
-    agreement = aligned / total_weight if total_weight else 0.0
-    confidence = min(100.0, abs(score) * 0.6 + agreement * 40.0 + min(adx_value, 40.0) * 0.5)
+    # Signal strength, NOT a win probability: how strong and how consistent
+    # the evidence is. Trend and momentum agreeing adds, disagreeing subtracts
+    # -- two independent categories agreeing is information; four views of the
+    # same trend agreeing with each other is not.
+    trend, push = categories["trend"], categories["momentum"]
+    agreement = 15.0 if trend * push > 0 else (-15.0 if trend * push < 0 else 0.0)
+    confidence = max(0.0, min(
+        100.0, abs(score) * 0.7 + agreement + min(adx_value, 40.0) * 0.375
+    ))
 
     return TechnicalRead(
         bias=bias,
@@ -198,4 +205,28 @@ def analyse(
         ema_slow=ema50,
         ema_trend=ema200,
         factors=factors,
+        categories={name: round(value, 3) for name, value in categories.items()},
     )
+
+
+# Which factors describe the same underlying thing. Each category is one vote.
+CATEGORIES: Dict[str, tuple] = {
+    "trend": ("trend_structure", "ema_cross", "ema_slope", "adx_direction"),
+    "momentum": ("macd", "rsi", "momentum"),
+    "location": ("range_position",),   # reported, used by entry quality only
+}
+CATEGORY_WEIGHTS: Dict[str, float] = {"trend": 0.6, "momentum": 0.4}
+
+
+def direction_score(factors: List[Factor]) -> tuple:
+    """-100..+100 from one vote per category, plus the category values."""
+    categories = {name: _category(factors, members) for name, members in CATEGORIES.items()}
+    score = sum(categories[name] * weight for name, weight in CATEGORY_WEIGHTS.items()) * 100.0
+    return score, categories
+
+
+def _category(factors: List[Factor], members: tuple) -> float:
+    """Weighted mean of one category's factors, in [-1, 1]."""
+    chosen = [factor for factor in factors if factor.name in members]
+    weight = sum(factor.weight for factor in chosen)
+    return sum(factor.value * factor.weight for factor in chosen) / weight if weight else 0.0

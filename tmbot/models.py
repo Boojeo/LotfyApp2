@@ -308,6 +308,12 @@ class TradePlan:
     style: Dict[str, Any] = field(default_factory=dict)
     # Lot-size advice for the stop in this plan; empty when unavailable.
     sizing: Dict[str, Any] = field(default_factory=dict)
+    # Entry quality, timeframe alignment and the verdict (APPROVED / CAUTION /
+    # REJECTED), separate from the direction above.
+    assessment: Dict[str, Any] = field(default_factory=dict)
+    # The independent second opinion (Gemini), shown beside -- never mixed
+    # into -- the analysis above. Empty when not requested.
+    second_opinion: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def management_timeframe(self) -> str:
@@ -352,6 +358,8 @@ class TradePlan:
             plan_id=self.plan_id,
             style=dict(self.style),
             sizing=dict(self.sizing),
+            assessment=dict(self.assessment),
+            second_opinion=dict(self.second_opinion),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -376,6 +384,8 @@ class TradePlan:
             "advisory_only": self.advisory_only,
             "style": self.style,
             "sizing": self.sizing,
+            "assessment": self.assessment,
+            "second_opinion": self.second_opinion,
         }
 
     @classmethod
@@ -401,6 +411,8 @@ class TradePlan:
             plan_id=raw.get("plan_id", ""),
             style=raw.get("style") or {},
             sizing=raw.get("sizing") or {},
+            assessment=raw.get("assessment") or {},
+            second_opinion=raw.get("second_opinion") or {},
         )
 
 
