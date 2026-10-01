@@ -13,6 +13,7 @@ from ..i18n import Translator
 from ..models import Bias, Direction, TradePlan, utcnow
 from . import bias as bias_module
 from . import fundamental as fundamental_module
+from . import gemini as gemini_module
 from . import news as news_module
 from . import quality as quality_module
 from . import style as style_module
@@ -29,10 +30,13 @@ class ReportBuilder:
     broker: BrokerAdapter
     config: Config
     news_provider: Optional[news_module.NewsProvider] = None
+    reviewer: Optional[gemini_module.GeminiReviewer] = None
 
     def __post_init__(self) -> None:
         if self.news_provider is None:
             self.news_provider = news_module.build(self.config.news)
+        if self.reviewer is None:
+            self.reviewer = gemini_module.GeminiReviewer(self.config.gemini)
 
     # ------------------------------------------------------------------ build
 
@@ -42,6 +46,7 @@ class ReportBuilder:
         direction: Optional[Direction] = None,
         *,
         fundamentals: bool = True,
+        second_opinion: bool = False,
     ) -> TradePlan:
         """Analyse ``epic``.
 
@@ -52,6 +57,10 @@ class ReportBuilder:
 
         ``fundamentals=False`` skips the news fetch and the AI call -- the
         only parts that can take tens of seconds -- for an instant read.
+
+        ``second_opinion=True`` adds Gemini's independent read AFTER the plan
+        is complete. It is attached for display only: nothing it says can
+        change the levels, the risk check or the verdict computed here.
         """
         analysis = self.config.analysis
         epic_config = self.config.epic_config(epic)
@@ -125,7 +134,7 @@ class ReportBuilder:
             higher_timeframe=profile.structure_timeframe, higher_bias=higher,
             risk_verdict=sizing.get("verdict") if sizing else None,
         )
-        return TradePlan(
+        plan = TradePlan(
             epic=epic,
             created_at=utcnow(),
             bias=combined,
@@ -148,6 +157,19 @@ class ReportBuilder:
             sizing=sizing,
             assessment=assessment.to_dict(),
         )
+        if second_opinion:
+            # After the plan is final, and attached for display only.
+            try:
+                plan.second_opinion = self.reviewer.review(
+                    plan, entry, display=epic_config.display or epic,
+                    digits=rules.decimal_places,
+                )
+            except Exception as exc:  # a second opinion can never cost the first
+                log.warning("%s: Gemini review failed (%s)", epic, type(exc).__name__)
+                plan.second_opinion = gemini_module.failure(
+                    gemini_module.ERROR, type(exc).__name__, self.config.gemini.model
+                )
+        return plan
 
     # ------------------------------------------------------------------ rendering
 
@@ -287,6 +309,10 @@ def render_markdown(plan: TradePlan, t: Optional[Translator] = None) -> str:
             url = item.get("url", "")
             lines.append(f"- [{title}]({url})" if url else f"- {title}")
 
+    second = second_opinion_lines(plan, t)
+    if second:
+        lines += ["", "## " + second[0]] + [f"- {line}" for line in second[1:]]
+
     lines += ["", "_" + t("report.plan_id", id=plan.plan_id) + "_"]
     return "\n".join(lines)
 
@@ -324,6 +350,47 @@ def assessment_lines(plan: TradePlan, t: Translator) -> List[str]:
             entry=(plan.style or {}).get("entry", ""), bias=t.bias_name(plan.bias),
             alignment=t.term("alignment", found.get("alignment", "")),
         ))
+    return lines
+
+
+def second_opinion_lines(plan: TradePlan, t: Translator) -> List[str]:
+    """Gemini's read, after the bot's -- or exactly why there is none."""
+    review = plan.second_opinion
+    if not review:
+        return []
+    status = review.get("status")
+    if status == gemini_module.DISABLED:
+        return [t("gemini.disabled")]
+    if status != gemini_module.OK:
+        return [t("gemini.failed", status=status, reason=review.get("reason", ""))]
+
+    def name(value: str) -> str:
+        return t.bias_name(value) if value in ("BULLISH", "BEARISH", "NEUTRAL") else (
+            t.term("gemini", value)
+        )
+
+    agree = review.get("agreement", "UNCERTAIN")
+    lines = [
+        t("gemini.heading", model=review.get("model", "")),
+        t("gemini.direction", direction=name(review.get("technical_direction", "")),
+          quality=t.term("gemini", review.get("entry_quality", "")),
+          strength=review.get("technical_strength", 0),
+          alignment=t.term("gemini", review.get("timeframe_alignment", ""))),
+        t(f"gemini.agreement.{agree.lower()}", bot=t.bias_name(plan.bias),
+          other=name(review.get("technical_direction", ""))),
+        t("gemini.fundamental", bias=name(review.get("fundamental_bias", "")),
+          news=t.term("gemini", review.get("news_status", "")),
+          summary=(" -- " + review["news_summary"]) if review.get("news_summary") else ""),
+    ]
+    for key, field_name in (("gemini.reasons", "key_reasons"),
+                            ("gemini.risks", "risk_concerns"),
+                            ("gemini.invalid", "invalidating_conditions")):
+        if review.get(field_name):
+            lines.append(t(key, items=t.semicolon.join(review[field_name])))
+    if review.get("sources"):
+        lines.append(t("gemini.sources", items=t.join(
+            source.get("title") or source.get("uri", "") for source in review["sources"]
+        )))
     return lines
 
 
@@ -380,4 +447,7 @@ def render_text(plan: TradePlan, t: Optional[Translator] = None) -> str:
           source=plan.fundamental.get("source")),
         plan.fundamental.get("summary", "")[:400],
     ]
+    second = second_opinion_lines(plan, t)
+    if second:
+        lines += [""] + second
     return f"{plan.epic} -- " + "\n".join(lines)

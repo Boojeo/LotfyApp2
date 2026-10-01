@@ -299,6 +299,32 @@ class LLMConfig:
 
 
 @dataclass
+class GeminiConfig:
+    """Gemini as an independent second opinion -- never the decision maker.
+
+    It sees the same market data and the bot's own levels, answers on its
+    own, and is shown beside the bot's analysis. It never changes a level, a
+    size, a verdict or a trade. Turned on by setting GEMINI_API_KEY.
+    """
+
+    enabled: bool = True
+    api_key: str = ""
+    model: str = "gemini-3.5-flash"
+    timeout: float = 25.0
+    # Let Gemini search the web for current news (Grounding with Google
+    # Search). Without it, news is reported as UNAVAILABLE, never guessed.
+    search_news: bool = True
+    # The same instrument, side and style within this window reuses the
+    # last answer instead of paying for an identical call.
+    cache_minutes: float = 5.0
+    bars: int = 48   # recent candles sent for its own read
+
+    @property
+    def active(self) -> bool:
+        return self.enabled and bool(self.api_key)
+
+
+@dataclass
 class TelegramConfig:
     enabled: bool = False
     bot_token: str = ""
@@ -334,6 +360,7 @@ class Config:
     style: StyleConfig = field(default_factory=StyleConfig)
     news: NewsConfig = field(default_factory=NewsConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
+    gemini: GeminiConfig = field(default_factory=GeminiConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     report: ReportConfig = field(default_factory=ReportConfig)
     database: str = "tmbot.sqlite3"
@@ -568,6 +595,7 @@ _NESTED = {
     "TelegramConfig": TelegramConfig,
     "ReportConfig": ReportConfig,
     "StyleConfig": StyleConfig,
+    "GeminiConfig": GeminiConfig,
 }
 
 
@@ -610,6 +638,7 @@ def apply_env(config: Config) -> Config:
 
     config.news.api_key = env.get("NEWS_API_KEY", config.news.api_key)
     config.llm.api_key = env.get("ANTHROPIC_API_KEY", config.llm.api_key)
+    config.gemini.api_key = env.get("GEMINI_API_KEY", config.gemini.api_key).strip()
     config.telegram.bot_token = env.get("TELEGRAM_BOT_TOKEN", config.telegram.bot_token)
     config.telegram.chat_id = env.get("TELEGRAM_CHAT_ID", config.telegram.chat_id)
     if config.telegram.bot_token and config.telegram.chat_id:
