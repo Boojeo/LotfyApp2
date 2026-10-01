@@ -388,7 +388,6 @@ place, shown in every report and `/now`:
 ```
 MARKET DATA -> TECHNICAL ENGINE -> DIRECTION -> ENTRY QUALITY (+ higher timeframe)
   -> LEVELS (SL from structure/ATR, TP1-3) -> HARD RISK LIMIT -> VERDICT
-  -> then, separately: GEMINI SECOND OPINION
 ```
 
 - **Direction** comes from two pooled categories — *trend* (EMA position,
@@ -410,17 +409,11 @@ MARKET DATA -> TECHNICAL ENGINE -> DIRECTION -> ENTRY QUALITY (+ higher timefram
   stops and warns loudly if that is over the limit.
 - **Verdict**: risk first, then direction, then quality — APPROVED, CAUTION
   or REJECTED. Signal strength plays no part.
-- **Gemini** (with `GEMINI_API_KEY`) gives its own read — direction, entry,
-  fundamentals and news via Google Search — *after* the bot's, marked
-  ALIGNED / CONFLICT / UNCERTAIN. It cannot change a level, a size or the
-  verdict. If it does not answer, Telegram says why (TIMEOUT, BAD_KEY,
-  RATE_LIMITED, NETWORK, NO_ANSWER, MALFORMED). News it cannot verify by search
-  is reported UNAVAILABLE, never guessed.
 
 Every analysis is stored with all of the above (`plans` table) and every exit
 with the broker's booked price, profit, commission, swap and deal number
-(`fills`), so performance by symbol, style, strength band, verdict and Gemini
-agreement can be measured once enough real trades exist.
+(`fills`), so performance by symbol, style, strength band and verdict can be
+measured once enough real trades exist.
 
 ### Trade style: how long a trade is planned for
 

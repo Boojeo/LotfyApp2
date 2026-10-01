@@ -258,3 +258,13 @@ class TaggingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RetiredSettingsTests(unittest.TestCase):
+    def test_a_leftover_gemini_section_does_not_stop_the_bot(self):
+        import tempfile
+        from tmbot import config as config_module
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as handle:
+            handle.write("gemini:\n  model: gemini-3.5-flash\nlanguage: en\n")
+        loaded = config_module.load(handle.name, env_file="/nonexistent")
+        self.assertEqual(loaded.language, "en")

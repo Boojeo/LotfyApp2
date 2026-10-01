@@ -25,7 +25,6 @@ from ..analysis import style as style_module
 from ..analysis.report import (
     ReportBuilder,
     assessment_lines,
-    second_opinion_lines,
     render_markdown,
     render_text,
     sizing_lines,
@@ -408,7 +407,6 @@ class Supervisor:
         *,
         force: bool = False,
         direction: Optional[Direction] = None,
-        second_opinion: bool = False,
     ) -> TradePlan:
         """Fetch today's plan, rebuilding it when it does not fit the trade.
 
@@ -425,7 +423,7 @@ class Supervisor:
                     "%s: stored plan is %s but the position is %s; rebuilding levels",
                     epic, existing.direction.value, direction.value,
                 )
-        plan = self.reporter.build(epic, direction=direction, second_opinion=second_opinion)
+        plan = self.reporter.build(epic, direction=direction)
         self.store.save_plan(plan)
         return plan
 
@@ -721,9 +719,9 @@ class Supervisor:
             "percent": change / today.open * 100.0 if today.open else 0.0,
         }
 
-    def _fresh_plan(self, epic: str, *, second_opinion: bool = False) -> TradePlan:
+    def _fresh_plan(self, epic: str) -> TradePlan:
         """Analyse now, on live data, and keep it as the current plan."""
-        plan = self.reporter.build(epic, fundamentals=False, second_opinion=second_opinion)
+        plan = self.reporter.build(epic, fundamentals=False)
         self.store.save_plan(plan)
         return plan
 
@@ -778,7 +776,7 @@ class Supervisor:
                 high=f"{day['high']:.{digits}f}", low=f"{day['low']:.{digits}f}",
             ))
 
-        plan = self._fresh_plan(epic, second_opinion=True)
+        plan = self._fresh_plan(epic)
 
         def gap(level: float) -> str:
             return f"{level} ({level - price:+.{digits}f})"
@@ -822,9 +820,6 @@ class Supervisor:
                     money=f"{money:+,.2f}" if money is not None else "-",
                     sl=trade.stop_level if trade.stop_level is not None else "-",
                 ))
-        second = second_opinion_lines(plan, self.t)
-        if second:
-            lines += [""] + second
         lines += ["", self.t("now.footer")]
         return "\n".join(lines)
 
@@ -1085,7 +1080,7 @@ class Supervisor:
         for item in self.config.analysis.watchlist:
             log.info("analysing %s ...", item.epic)
             try:
-                plan = self._plan_for(item.epic, force=True, second_opinion=True)
+                plan = self._plan_for(item.epic, force=True)
             except Exception as exc:
                 log.exception("daily report failed for %s", item.epic)
                 self.notifier.send(
@@ -1298,7 +1293,7 @@ class Supervisor:
         replies: List[str] = []
         for epic in epics:
             try:
-                plan = self._plan_for(epic, force=True, second_opinion=True)
+                plan = self._plan_for(epic, force=True)
                 replies.append(self._publish_plan(plan))
             except Exception as exc:
                 replies.append(self.t("report.failed", epic=epic, error=exc))

@@ -164,16 +164,6 @@ llm:
   enabled: true
   model: claude-opus-5
 
-# Gemini second opinion. Turned on by GEMINI_API_KEY in .env. It reads the
-# same data and gives its own view on /now <symbol>, /report and the daily
-# report, shown AFTER the bot's analysis with ALIGNED / CONFLICT / UNCERTAIN.
-# It never changes a level, a lot size or the verdict. If it does not answer,
-# Telegram says why (TIMEOUT, BAD_KEY, RATE_LIMITED, ...).
-gemini:
-  model: gemini-3.5-flash
-  timeout: 25.0
-  search_news: true        # news via Google Search; never guessed without it
-  cache_minutes: 5.0
 
 telegram:
   enabled: false                  # auto-enables when the token and chat id are set

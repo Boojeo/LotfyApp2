@@ -874,55 +874,6 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "term.alignment.partial": {"en": "PARTIAL", "ar": "توافق جزئي"},
     "term.alignment.conflict": {"en": "CONFLICT", "ar": "متعارضة"},
     "term.alignment.uncertain": {"en": "UNCERTAIN", "ar": "غير مؤكدة"},
-    "gemini.heading": {
-        "en": "SECOND OPINION -- Gemini ({model})",
-        "ar": "الرأي الثاني -- Gemini ({model})",
-    },
-    "gemini.direction": {
-        "en": "Direction: {direction} | entry {quality} | strength {strength}/100 | "
-              "timeframes {alignment}",
-        "ar": "الاتجاه: {direction} | الدخول {quality} | القوة {strength}/100 | "
-              "الأطر الزمنية {alignment}",
-    },
-    "gemini.agreement.aligned": {
-        "en": "Agreement with the bot: ALIGNED",
-        "ar": "التوافق مع البوت: متوافق",
-    },
-    "gemini.agreement.conflict": {
-        "en": "Agreement with the bot: CONFLICT (bot {bot}, Gemini {other})",
-        "ar": "التوافق مع البوت: تعارض (البوت {bot}، Gemini {other})",
-    },
-    "gemini.agreement.uncertain": {
-        "en": "Agreement with the bot: UNCERTAIN (bot {bot}, Gemini {other})",
-        "ar": "التوافق مع البوت: غير مؤكد (البوت {bot}، Gemini {other})",
-    },
-    "gemini.fundamental": {
-        "en": "Fundamentals: {bias} | news {news}{summary}",
-        "ar": "العوامل الأساسية: {bias} | الأخبار {news}{summary}",
-    },
-    "gemini.reasons": {"en": "Why: {items}", "ar": "الأسباب: {items}"},
-    "gemini.risks": {"en": "Concerns: {items}", "ar": "المخاوف: {items}"},
-    "gemini.invalid": {"en": "Wrong if: {items}", "ar": "يُلغى إذا: {items}"},
-    "gemini.sources": {"en": "News sources: {items}", "ar": "مصادر الأخبار: {items}"},
-    "gemini.failed": {
-        "en": "SECOND OPINION: Gemini did not respond -- {status}: {reason}. "
-              "The bot's analysis above stands on its own.",
-        "ar": "الرأي الثاني: لم يستجب Gemini -- {status}: {reason}. "
-              "تحليل البوت أعلاه قائم بذاته.",
-    },
-    "gemini.disabled": {
-        "en": "SECOND OPINION: off -- add GEMINI_API_KEY to .env to turn it on.",
-        "ar": "الرأي الثاني: متوقف -- أضف GEMINI_API_KEY إلى ملف ‎.env‎ لتشغيله.",
-    },
-    "term.gemini.uncertain": {"en": "UNCERTAIN", "ar": "غير مؤكد"},
-    "term.gemini.unavailable": {"en": "UNAVAILABLE", "ar": "غير متاحة"},
-    "term.gemini.available": {"en": "AVAILABLE", "ar": "متاحة"},
-    "term.gemini.good": {"en": "GOOD", "ar": "جيد"},
-    "term.gemini.weak": {"en": "WEAK", "ar": "ضعيف"},
-    "term.gemini.poor": {"en": "POOR", "ar": "سيئ"},
-    "term.gemini.aligned": {"en": "ALIGNED", "ar": "متوافقة"},
-    "term.gemini.partial": {"en": "PARTIAL", "ar": "جزئية"},
-    "term.gemini.conflict": {"en": "CONFLICT", "ar": "متعارضة"},
     "report.levels_heading": {"en": "Levels", "ar": "المستويات"},
     "report.col_level": {"en": "Level", "ar": "المستوى"},
     "report.col_price": {"en": "Price", "ar": "السعر"},

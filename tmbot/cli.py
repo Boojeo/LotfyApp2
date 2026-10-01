@@ -490,10 +490,6 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"news          {config.news.provider}")
             print(f"claude        {'on' if config.llm.enabled else 'off'} "
                   f"({config.llm.model})")
-            print(f"gemini        "
-                  + (f"on ({config.gemini.model}) -- second opinion on /now, /report "
-                     f"and the daily report" if config.gemini.active
-                     else "off -- add GEMINI_API_KEY to .env for a second opinion"))
             print()
             print("Settings read cleanly. Nothing was sent to the broker.")
             return 0
@@ -606,7 +602,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             failures = 0
             for epic in epics:
                 try:
-                    plan = reporter.build(epic, second_opinion=True)
+                    plan = reporter.build(epic)
                 except Exception as exc:
                     print(f"{epic}: {exc}", file=sys.stderr)
                     failures += 1
