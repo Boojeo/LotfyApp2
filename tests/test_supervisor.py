@@ -322,7 +322,7 @@ class NowCommandTests(unittest.TestCase):
 
         self.assertIn("Today: open", reply)
         self.assertIn("ANALYSIS NOW", reply)
-        self.assertIn("Direction bias:", reply)
+        self.assertIn("**Expected Trend:**", reply)
         self.assertIn("TP1", reply)
         self.assertIn("Signals (H1): Trend", reply)
         self.assertIn("ADX", reply)

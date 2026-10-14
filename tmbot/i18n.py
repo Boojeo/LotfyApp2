@@ -604,10 +604,6 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "Today: open {open}, {change} ({percent}%) | high {high} low {low}",
         "ar": "اليوم: الافتتاح {open}، {change} ({percent}%) | الأعلى {high} الأدنى {low}",
     },
-    "now.levels": {
-        "en": "TP1 {tp1}\nTP2 {tp2}\nTP3 {tp3}\nSL  {sl}",
-        "ar": "TP1 {tp1}\nTP2 {tp2}\nTP3 {tp3}\nSL  {sl}",
-    },
     "now.trades": {
         "en": "Your open trades ({count}):",
         "ar": "صفقاتك المفتوحة ({count}):",
@@ -717,10 +713,6 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "{epic} -- daily plan {timestamp}",
         "ar": "{epic} — الخطة اليومية {timestamp}",
     },
-    "report.bias": {
-        "en": "Direction bias: {bias}  (signal strength {confidence}/100)",
-        "ar": "الاتجاه المتوقع: {bias}  (قوة الإشارة {confidence}/100)",
-    },
     "report.advisory": {
         "en": (
             "Bias is NEUTRAL. Levels below are reference only -- the bot will "
@@ -731,45 +723,6 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "الاتجاه محايد. المستويات أدناه للاسترشاد فقط — سيدير البوت أي مركز "
             "تفتحه، لكن لا شيء هنا يدعو لفتح صفقة."
         ),
-    },
-    "report.reference": {
-        "en": "Reference price {price} | ATR {atr} | risk to stop {risk}",
-        "ar": "السعر المرجعي {price} | متوسط المدى الحقيقي {atr} | المخاطرة حتى الوقف {risk}",
-    },
-    "report.style": {
-        "en": "Style: {style} (about {hours} h) | levels {entry}, structure "
-              "{structure}, managed on {management}",
-        "ar": "النمط: {style} (حوالي {hours} ساعة) | المستويات {entry}، الهيكل "
-              "{structure}، الإدارة على {management}",
-    },
-    "risk.ok": {
-        "en": "Risk {percent}% of equity = max {max_money} {currency}: open {deals} x "
-              "{lots} lots ({targets}) | loss at SL {loss} {currency} ({loss_percent}%)",
-        "ar": "مخاطرة {percent}% من رأس المال = حد أقصى {max_money} {currency}: افتح "
-              "{deals} × {lots} لوت ({targets}) | الخسارة عند الوقف {loss} {currency} "
-              "({loss_percent}%)",
-    },
-    "risk.reduced": {
-        "en": "Risk limit: {planned} deals at the {min_lot} minimum would be over "
-              "{percent}% -- open {deals} x {lots} lots instead ({targets}) | loss at SL "
-              "{loss} {currency} ({loss_percent}%)",
-        "ar": "حد المخاطرة: {planned} صفقات بالحد الأدنى {min_lot} تتجاوز {percent}% -- "
-              "افتح {deals} × {lots} لوت بدلًا منها ({targets}) | الخسارة عند الوقف "
-              "{loss} {currency} ({loss_percent}%)",
-    },
-    "risk.rejected": {
-        "en": "REJECTED -- RISK LIMIT: even 1 deal at the {min_lot} minimum loses "
-              "{min_money} {currency} ({min_percent}%) at the stop, over your {percent}% "
-              "({max_money} {currency}). Skip this trade.",
-        "ar": "مرفوضة -- حد المخاطرة: حتى صفقة واحدة بالحد الأدنى {min_lot} تخسر "
-              "{min_money} {currency} ({min_percent}%) عند الوقف، أكثر من {percent}% "
-              "({max_money} {currency}). تجنّب هذه الصفقة.",
-    },
-    "risk.detail": {
-        "en": "Ideal {ideal} lots total | broker min {min_lot}, step {step}, max {max_lot} "
-              "| equity {equity} {currency}",
-        "ar": "الحجم المثالي {ideal} لوت إجمالًا | الحد الأدنى للوسيط {min_lot}، الخطوة "
-              "{step}، الحد الأقصى {max_lot} | رأس المال {equity} {currency}",
     },
     "risk.unchecked": {
         "en": "Risk at stop: NOT CHECKED (account or contract size unavailable) -- size "
@@ -789,12 +742,6 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "ar": "تحذير: صفقاتك ({deals}) تخسر {money} عند الوقف = {percent}% من رأس المال "
               "-- أكثر من حدك {limit}%. فكّر في إغلاق صفقة أو تقليل الحجم.",
     },
-    "report.strength_note": {
-        "en": "Signal strength measures how strong and consistent the evidence is. "
-              "It is not a probability of winning.",
-        "ar": "قوة الإشارة تقيس قوة الأدلة واتساقها، وليست احتمال ربح الصفقة.",
-    },
-    "verdict.line": {"en": "VERDICT: {verdict} -- {reason}", "ar": "الحكم: {verdict} -- {reason}"},
     "verdict.approved": {
         "en": "direction, entry and risk all check out",
         "ar": "الاتجاه ونقطة الدخول والمخاطرة كلها سليمة",
@@ -822,10 +769,6 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "term.verdict.approved": {"en": "APPROVED", "ar": "مقبولة"},
     "term.verdict.caution": {"en": "CAUTION", "ar": "بحذر"},
     "term.verdict.rejected": {"en": "REJECTED", "ar": "مرفوضة"},
-    "quality.line": {
-        "en": "Entry quality: {quality}{reasons}",
-        "ar": "جودة نقطة الدخول: {quality}{reasons}",
-    },
     "term.quality.good": {"en": "GOOD", "ar": "جيدة"},
     "term.quality.weak": {"en": "WEAK", "ar": "ضعيفة"},
     "term.quality.poor": {"en": "POOR", "ar": "سيئة"},
@@ -866,10 +809,6 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "risk limit cannot be met",
         "ar": "لا يمكن الالتزام بحد المخاطرة",
     },
-    "alignment.line": {
-        "en": "Timeframes: {higher} {higher_bias} vs {entry} {bias} -> {alignment}",
-        "ar": "الأطر الزمنية: {higher} {higher_bias} مقابل {entry} {bias} ← {alignment}",
-    },
     "term.alignment.aligned": {"en": "ALIGNED", "ar": "متوافقة"},
     "term.alignment.partial": {"en": "PARTIAL", "ar": "توافق جزئي"},
     "term.alignment.conflict": {"en": "CONFLICT", "ar": "متعارضة"},
@@ -899,10 +838,6 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "report.liquidity_heading": {"en": "Liquidity zones", "ar": "مناطق السيولة"},
     "report.headlines_heading": {"en": "Headlines", "ar": "العناوين"},
     "report.plan_id": {"en": "plan id: {id}", "ar": "معرّف الخطة: {id}"},
-    "report.tech_label": {
-        "en": "tech {score} / {strength} | news {bias} ({source})",
-        "ar": "فني {score} / {strength} | أخبار {bias} ({source})",
-    },
     "report.advisory_tag": {"en": "  [advisory only]", "ar": "  [للاسترشاد فقط]"},
     "report.failed": {
         "en": "{epic}: report failed -- {error}",
@@ -1028,8 +963,8 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "term.signal.weak": {"en": "Weak", "ar": "ضعيفة"},
     "report.update_heading": {"en": "{epic} plan update:", "ar": "تحديث خطة {epic}:"},
     "report.update_bias": {
-        "en": "bias {old} -> {new} (signal strength {confidence})",
-        "ar": "الاتجاه {old} ← {new} (قوة الإشارة {confidence})",
+        "en": "Expected Trend {old} -> {new} (Signal Strength: {confidence}/100)",
+        "ar": "الاتجاه المتوقع {old} ← {new} (قوة الإشارة: {confidence}/100)",
     },
     "report.update_levels": {
         "en": "New levels: SL {sl} | TP1 {tp1} TP2 {tp2} TP3 {tp3}",
