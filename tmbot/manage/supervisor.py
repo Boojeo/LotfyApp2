@@ -1089,10 +1089,13 @@ class Supervisor:
                 continue
             self._publish_plan(plan)
 
+    def _env_tag(self) -> str:
+        return f"[{self.config.broker.environment.upper()}] "
+
     def _publish_plan(self, plan: TradePlan, *, notify: bool = True) -> str:
         """Write the markdown, draw the chart, and push both out."""
         self._write_report_file(plan)
-        caption = render_text(plan, self.t)
+        caption = render_text(plan, self.t, tag=self._env_tag())
         if not notify:
             return caption
         path = self._render_chart(plan)
@@ -1304,7 +1307,7 @@ class Supervisor:
         if not epic:
             return self.t("command.plan_usage")
         plan = self.store.latest_plan(epic)
-        return render_text(plan, self.t) if plan else self.t("report.no_plan", epic=epic)
+        return render_text(plan, self.t, tag=self._env_tag()) if plan else self.t("report.no_plan", epic=epic)
 
     def close_command(self, argument: str) -> str:
         trade = self.store.trade_by_short_id(argument.strip())

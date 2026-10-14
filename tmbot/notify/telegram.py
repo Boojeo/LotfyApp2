@@ -21,6 +21,7 @@ from .base import CommandHandler, Notifier
 log = logging.getLogger(__name__)
 
 OFFSET_KEY = "telegram_update_offset"
+MAX_CAPTION = 1000
 MAX_MESSAGE = 3900  # Telegram's limit is 4096; leave room for the prefix
 
 
@@ -59,7 +60,11 @@ class TelegramNotifier(Notifier):
 
     def send_photo(self, path: str, caption: str = "", *, level: str = "info") -> None:
         """Upload a chart.  Falls back to the caption alone if the upload fails."""
-        text = f"{self.PREFIX.get(level, '')}{self.decorate(caption)}"[:1000]
+        full = f"{self.PREFIX.get(level, '')}{self.decorate(caption)}"
+        # Photo captions cap at 1024 chars; a longer report goes out as text
+        # right after the chart instead of being cut off.
+        overflow = len(full) > MAX_CAPTION
+        text = full.split("\n", 1)[0] if overflow else full
         try:
             with open(path, "rb") as handle:
                 response = self._http.post(
@@ -69,6 +74,8 @@ class TelegramNotifier(Notifier):
                     timeout=self.config.timeout * 2,
                 )
             if response.status_code < 400:
+                if overflow:
+                    self.send(caption, level=level)
                 return
             log.warning("telegram sendPhoto failed: %s", response.text[:200])
         except (OSError, requests.RequestException) as exc:

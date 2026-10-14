@@ -88,11 +88,29 @@ class DisplayTests(unittest.TestCase):
         from tests.test_style import UP, auto_config, broker_with
         plan = ReportBuilder(broker_with(M15=UP, H1=UP), auto_config()).build("GOLD")
         text = render_text(plan)
-        self.assertIn("signal strength", text)
+        self.assertIn("**Expected Trend:**", text)
+        self.assertIn("Signal Strength:", text)
         self.assertNotIn("confidence", text)
-        self.assertIn("VERDICT:", text)
-        self.assertIn("Entry quality:", text)
-        self.assertIn("Timeframes:", text)
+        self.assertIn("**Verdict:**", text)
+        self.assertIn("**Reason:**", text)
+        for heading in ("Trade Report", "Reversal Analysis & Technical Indicators",
+                        "Technical Levels Details", "Risk Management & Capital"):
+            self.assertIn(heading, text)
+        self.assertEqual(text.count("\n---\n"), 3)
+        self.assertIn("**Expected Reversal Rate:**", text)
+        self.assertIn("**Immediate Loss Probability:**", text)
+
+    def test_the_title_carries_the_environment_tag_once(self):
+        from tmbot.analysis.report import ReportBuilder, render_text
+        from tests.test_style import UP, auto_config, broker_with
+        from tmbot.notify.base import ConsoleNotifier
+        plan = ReportBuilder(broker_with(M15=UP, H1=UP), auto_config()).build("GOLD")
+        text = render_text(plan, tag="[DEMO] ")
+        self.assertTrue(text.startswith("### 📉 **[DEMO] GOLD Trade Report**"))
+        notifier = ConsoleNotifier()
+        notifier.set_tag("[DEMO] ")
+        self.assertEqual(notifier.decorate(text), text)
+        self.assertTrue(notifier.decorate("hello").startswith("[DEMO] "))
 
 
 if __name__ == "__main__":

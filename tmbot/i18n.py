@@ -912,6 +912,120 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "No stored plan for {epic}. Try /report {epic}.",
         "ar": "لا توجد خطة محفوظة لـ {epic}. جرّب ‎/report {epic}‎.",
     },
+    # Structured trade notification (render_text).
+    "tr.title": {
+        "en": "### {emoji} **{tag}{symbol} Trade Report**",
+        "ar": "### {emoji} **{tag}تقرير صفقة {symbol}**",
+    },
+    "tr.trend": {
+        "en": "* **Expected Trend:** {emoji} {direction} (Signal Strength: "
+              "{strength}/100 - {quality})",
+        "ar": "* **الاتجاه المتوقع:** {emoji} {direction} (قوة الإشارة: "
+              "{strength}/100 - {quality})",
+    },
+    "tr.verdict": {
+        "en": "* **Verdict:** {emoji} **{verdict}** — {reason}",
+        "ar": "* **الحكم:** {emoji} **{verdict}** — {reason}",
+    },
+    "tr.reason": {"en": "* **Reason:** {reason}", "ar": "* **السبب:** {reason}"},
+    "tr.reversal_heading": {
+        "en": "### 🔄 **Reversal Analysis & Technical Indicators**",
+        "ar": "### 🔄 **تحليل الانعكاس والمؤشرات الفنية**",
+    },
+    "tr.reversal_rate": {
+        "en": "* **Expected Reversal Rate:** {emoji} {description}",
+        "ar": "* **معدل الانعكاس المتوقع:** {emoji} {description}",
+    },
+    "tr.loss_probability": {
+        "en": "* **Immediate Loss Probability:** {text}",
+        "ar": "* **احتمال الخسارة الفورية:** {text}",
+    },
+    "tr.technical": {
+        "en": "* **Technical Analysis:** {score} / {strength} | **News:** {news}",
+        "ar": "* **التحليل الفني:** {score} / {strength} | **الأخبار:** {news}",
+    },
+    "tr.levels_heading": {
+        "en": "### 📊 **Technical Levels Details**",
+        "ar": "### 📊 **تفاصيل المستويات الفنية**",
+    },
+    "tr.style": {
+        "en": "* **Style:** {style} | Levels: {levels}, Structure: {structure}, "
+              "Managed on {managed}",
+        "ar": "* **النمط:** {style} | المستويات: {levels}، الهيكل: {structure}، "
+              "الإدارة على {managed}",
+    },
+    "tr.reference": {"en": "* **Reference Price:** {value}", "ar": "* **السعر المرجعي:** {value}"},
+    "tr.atr": {
+        "en": "* **Average True Range (ATR):** {value}",
+        "ar": "* **متوسط المدى الحقيقي (ATR):** {value}",
+    },
+    "tr.risk_to_stop": {
+        "en": "* **Risk to Stop:** {value}", "ar": "* **المخاطرة حتى الوقف:** {value}",
+    },
+    "tr.sl": {"en": "* **Stop Loss (SL):** {value}", "ar": "* **وقف الخسارة (SL):** {value}"},
+    "tr.tp": {
+        "en": "* **TP{n}:** {price} ({r}R)", "ar": "* **الهدف {n}:** {price} ({r}R)",
+    },
+    "tr.risk_heading": {
+        "en": "### ⚠️ **Risk Management & Capital**",
+        "ar": "### ⚠️ **إدارة المخاطر ورأس المال**",
+    },
+    "tr.equity": {
+        "en": "* **Current Equity:** {equity} {currency}",
+        "ar": "* **رأس المال الحالي:** {equity} {currency}",
+    },
+    "tr.allowed_risk": {
+        "en": "* **Allowed Risk Limit ({percent}%):** {money} {currency}",
+        "ar": "* **حد المخاطرة المسموح ({percent}%):** {money} {currency}",
+    },
+    "tr.min_loss": {
+        "en": "* **Loss at Minimum Size ({min_lot} lot):** {money} {currency} "
+              "(loses {percent}%, which {limit})",
+        "ar": "* **الخسارة عند الحد الأدنى ({min_lot} لوت):** {money} {currency} "
+              "(تخسر {percent}%، وهذا {limit})",
+    },
+    "tr.limit_exceeds": {"en": "exceeds your limit", "ar": "يتجاوز حدك"},
+    "tr.limit_within": {"en": "is within your limit", "ar": "ضمن حدك"},
+    "tr.ideal_size": {
+        "en": "* **Ideal Size Suggested:** {ideal} lots total (Broker minimum is {min_lot})",
+        "ar": "* **الحجم المثالي المقترح:** {ideal} لوت إجمالًا "
+              "(الحد الأدنى للوسيط {min_lot})",
+    },
+    "tr.final": {"en": "* **Final Decision:** {action}", "ar": "* **القرار النهائي:** {action}"},
+    "tr.action_open": {
+        "en": "Open {deals} x {lots} lots ({targets}) — loss at SL {money} {currency} "
+              "({percent}%)",
+        "ar": "افتح {deals} × {lots} لوت ({targets}) — الخسارة عند الوقف {money} "
+              "{currency} ({percent}%)",
+    },
+    "tr.action_skip": {"en": "Skip this trade", "ar": "تجنّب هذه الصفقة"},
+    "tr.action_manual": {
+        "en": "Risk could not be checked — size this trade yourself",
+        "ar": "تعذّر التحقق من المخاطرة — حدد الحجم بنفسك",
+    },
+    "tr.risk_unavailable": {
+        "en": "* Account or contract data unavailable — risk not checked",
+        "ar": "* بيانات الحساب أو العقد غير متاحة — لم يتم التحقق من المخاطرة",
+    },
+    "tr.loss_text": {
+        "en": "{emoji} ~{percent}% chance the stop is hit before TP1 (rough estimate, "
+              "not a forecast)",
+        "ar": "{emoji} حوالي {percent}% احتمال ضرب الوقف قبل الهدف الأول "
+              "(تقدير تقريبي وليس توقعًا)",
+    },
+    "tr.reversal.low": {
+        "en": "Low — trend evidence is consistent", "ar": "منخفض — أدلة الاتجاه متسقة",
+    },
+    "tr.reversal.medium": {
+        "en": "Medium — some signs of a pullback", "ar": "متوسط — بعض علامات التراجع",
+    },
+    "tr.reversal.high": {
+        "en": "High — a turn against this trade is likely",
+        "ar": "مرتفع — انعكاس ضد هذه الصفقة محتمل",
+    },
+    "term.signal.strong": {"en": "Strong", "ar": "قوية"},
+    "term.signal.moderate": {"en": "Moderate", "ar": "متوسطة"},
+    "term.signal.weak": {"en": "Weak", "ar": "ضعيفة"},
     "report.update_heading": {"en": "{epic} plan update:", "ar": "تحديث خطة {epic}:"},
     "report.update_bias": {
         "en": "bias {old} -> {new} (signal strength {confidence})",

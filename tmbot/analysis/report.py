@@ -358,27 +358,146 @@ def sizing_lines(plan: TradePlan, t: Translator) -> List[str]:
     return lines
 
 
-def render_text(plan: TradePlan, t: Optional[Translator] = None) -> str:
-    """Compact form for chat notifications."""
-    t = t or Translator()
+_TREND_EMOJI = {"BULLISH": "📈", "BEARISH": "📉", "NEUTRAL": "➖"}
+_VERDICT_EMOJI = {"APPROVED": "✅", "CAUTION": "⚠️", "REJECTED": "❌"}
+_REVERSAL_EMOJI = {"low": "🟢", "medium": "🟡", "high": "🔴"}
+_REVERSAL_LEVELS = ((4, "high"), (2, "medium"), (0, "low"))
+
+# Flags that make a turn against the trade more likely, and by how much.
+_REVERSAL_POINTS = {
+    "against_bias": 2, "timeframe_conflict": 2, "timeframe_partial": 1,
+    "extended": 1, "rsi_stretched": 1, "near_level": 1,
+}
+ADX_WEAK = 20.0
+LOSS_PER_REVERSAL_POINT = 0.04
+LOSS_CAP = 0.95
+
+
+def reversal_points(plan: TradePlan) -> int:
+    """How many independent warning signs point at a turn against the trade."""
+    flags = (plan.assessment or {}).get("flags", [])
+    points = sum(_REVERSAL_POINTS.get(flag.get("key"), 0) for flag in flags)
+    adx = plan.technical.get("adx")
+    if isinstance(adx, (int, float)) and adx < ADX_WEAK:
+        points += 1  # no real trend to carry the move
+    return points
+
+
+def reversal_level(plan: TradePlan) -> str:
+    points = reversal_points(plan)
+    return next(name for floor, name in _REVERSAL_LEVELS if points >= floor)
+
+
+def loss_probability(plan: TradePlan) -> float:
+    """Rough chance the stop is hit before TP1, 0..1.
+
+    The baseline is the driftless random-walk answer -- stop distance over
+    total distance -- which is exactly ``1 / (1 + R)`` for a TP1 of ``R``.
+    Each reversal warning sign nudges it up. It is an estimate for sizing up
+    the entry, not a forecast, and the message says so.
+    """
+    reward = plan.reward_risk(plan.tp1)
+    base = 1.0 / (1.0 + reward) if reward > 0 else 0.5
+    return min(LOSS_CAP, base + reversal_points(plan) * LOSS_PER_REVERSAL_POINT)
+
+
+def _signal_quality(strength: float) -> str:
+    return "strong" if strength >= 70 else "moderate" if strength >= 40 else "weak"
+
+
+def _verdict_text(plan: TradePlan, t: Translator) -> List[str]:
+    """Title, trend, verdict and the reasons behind it."""
+    found = plan.assessment or {}
+    verdict = found.get("verdict", "")
     lines = [
-        t("report.bias", bias=t.bias_name(plan.bias), confidence=f"{plan.confidence:.0f}")
+        t("tr.trend", emoji=_TREND_EMOJI.get(plan.bias.value, "➖"),
+          direction=t.bias_name(plan.bias, arrow=False),
+          strength=f"{plan.confidence:.0f}",
+          quality=t.term("signal", _signal_quality(plan.confidence)))
         + (t("report.advisory_tag") if plan.advisory_only else ""),
-        *assessment_lines(plan, t),
-        *style_lines(plan, t),
-        t("report.reference", price=plan.reference_price,
-          atr=f"{plan.atr:.4f}", risk=f"{plan.risk:.4f}"),
-        f"TP1 {plan.tp1}  ({plan.reward_risk(plan.tp1):.2f}R)",
-        f"TP2 {plan.tp2}  ({plan.reward_risk(plan.tp2):.2f}R)",
-        f"TP3 {plan.tp3}  ({plan.reward_risk(plan.tp3):.2f}R)",
-        f"SL  {plan.sl}",
-        *sizing_lines(plan, t),
-        "",
-        t("report.tech_label",
-          score=plan.technical.get("score"),
-          strength=t.strength_name(plan.technical.get("strength", "")),
-          bias=t.bias_name(plan.fundamental.get("bias", "")),
-          source=plan.fundamental.get("source")),
-        plan.fundamental.get("summary", "")[:400],
     ]
-    return f"{plan.epic} -- " + "\n".join(lines)
+    if verdict:
+        lines.append(t("tr.verdict", emoji=_VERDICT_EMOJI.get(verdict, "⚠️"),
+                       verdict=t.term("verdict", verdict),
+                       reason=t(found.get("verdict_key") or "verdict.weak_entry")))
+        reasons = [t(f"quality.flag.{flag['key']}", **flag.get("args", {}))
+                   for flag in found.get("flags", [])]
+        detail = t.semicolon.join(reasons) if reasons else plan.narrative
+        if detail:
+            lines.append(t("tr.reason", reason=detail))
+    return lines
+
+
+def _risk_text(plan: TradePlan, t: Translator) -> List[str]:
+    sizing = plan.sizing or {}
+    heading = t("tr.risk_heading")
+    if not sizing or sizing.get("verdict") == "UNCHECKED":
+        return [heading, t("tr.risk_unavailable"), t("tr.final", action=t("tr.action_manual"))]
+    money = lambda key: f"{sizing.get(key, 0):,.2f}"  # noqa: E731
+    currency = sizing.get("currency", "")
+    over = sizing.get("min_lot_percent", 0) > sizing.get("risk_percent", 0)
+    skip = (sizing.get("verdict") == "REJECTED"
+            or (plan.assessment or {}).get("verdict") == "REJECTED"
+            or not sizing.get("legs"))
+    if skip:
+        action = t("tr.action_skip")
+    else:
+        action = t("tr.action_open", deals=sizing.get("legs"), lots=sizing.get("per_leg"),
+                   targets=" / ".join(sizing.get("targets") or []) or "-",
+                   money=money("total_money"), currency=currency,
+                   percent=f"{sizing.get('total_percent', 0):.2f}")
+    return [
+        heading,
+        t("tr.equity", equity=money("equity"), currency=currency),
+        t("tr.allowed_risk", percent=f"{sizing.get('risk_percent', 0):g}",
+          money=money("max_money"), currency=currency),
+        t("tr.min_loss", min_lot=sizing.get("broker_min"), money=money("min_lot_money"),
+          currency=currency, percent=f"{sizing.get('min_lot_percent', 0):.2f}",
+          limit=t("tr.limit_exceeds" if over else "tr.limit_within")),
+        t("tr.ideal_size", ideal=f"{sizing.get('ideal_volume', 0):.4f}",
+          min_lot=sizing.get("broker_min")),
+        t("tr.final", action=action),
+    ]
+
+
+def render_text(plan: TradePlan, t: Optional[Translator] = None, tag: str = "") -> str:
+    """Structured chat notification: verdict, reversal risk, levels, capital.
+
+    ``tag`` is the environment marker (e.g. ``[DEMO] ``) so it lands inside the
+    title; notifiers skip their own prefix when the message already has it.
+    """
+    t = t or Translator()
+    style = plan.style or {}
+    level = reversal_level(plan)
+    chance = loss_probability(plan)
+    lines = [
+        t("tr.title", emoji="📉", tag=tag, symbol=plan.epic),
+        "",
+        *_verdict_text(plan, t),
+        "", "---", "",
+        t("tr.reversal_heading"),
+        t("tr.reversal_rate", emoji=_REVERSAL_EMOJI[level], description=t(f"tr.reversal.{level}")),
+        t("tr.loss_probability", text=t(
+            "tr.loss_text", percent=f"{round(chance * 100 / 5) * 5:.0f}",
+            emoji=_REVERSAL_EMOJI["high" if chance >= 0.6 else "medium" if chance >= 0.4 else "low"])),
+        t("tr.technical", score=plan.technical.get("score"),
+          strength=t.strength_name(plan.technical.get("strength", "")),
+          news=t.bias_name(plan.fundamental.get("bias", ""), arrow=False)),
+        "", "---", "",
+        t("tr.levels_heading"),
+    ]
+    if style and style.get("name") != "custom":
+        lines.append(t("tr.style", style=t.term("style", style.get("name", "")),
+                       levels=style.get("entry", ""), structure=style.get("structure", ""),
+                       managed=style.get("management", "")))
+    lines += [
+        t("tr.reference", value=plan.reference_price),
+        t("tr.atr", value=f"{plan.atr:.4f}"),
+        t("tr.risk_to_stop", value=f"{plan.risk:.4f}"),
+        t("tr.sl", value=plan.sl),
+        *(t("tr.tp", n=n, price=price, r=f"{plan.reward_risk(price):.2f}")
+          for n, price in enumerate(plan.targets, start=1)),
+        "", "---", "",
+        *_risk_text(plan, t),
+    ]
+    return "\n".join(lines)

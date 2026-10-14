@@ -107,7 +107,10 @@ class ReportVerdictTests(unittest.TestCase):
         broker.account_summary = lambda: {"currency": "USD", "equity": 50.0}
         plan = ReportBuilder(broker, auto_config()).build("GOLD")
         self.assertEqual(plan.sizing["verdict"], "REJECTED")
-        self.assertIn("REJECTED -- RISK LIMIT", render_text(plan))
+        text = render_text(plan)
+        self.assertIn("**REJECTED** — the risk limit cannot be met", text)
+        self.assertIn("which exceeds your limit", text)
+        self.assertIn("**Final Decision:** Skip this trade", text)
 
 
 class BasketTests(unittest.TestCase):
