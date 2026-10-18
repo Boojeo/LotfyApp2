@@ -15,6 +15,7 @@ from . import bias as bias_module
 from . import fundamental as fundamental_module
 from . import news as news_module
 from . import quality as quality_module
+from . import structure as structure_module
 from . import style as style_module
 from .levels import build_plan
 
@@ -125,6 +126,7 @@ class ReportBuilder:
             higher_timeframe=profile.structure_timeframe, higher_bias=higher,
             risk_verdict=sizing.get("verdict") if sizing else None,
         )
+        market = self._market_map(epic, entry, structure, reference, level_plan.atr)
         plan = TradePlan(
             epic=epic,
             created_at=utcnow(),
@@ -147,8 +149,24 @@ class ReportBuilder:
             style=choice.to_dict(),
             sizing=sizing,
             assessment=assessment.to_dict(),
+            market=market,
         )
         return plan
+
+    def _market_map(self, epic, entry, structure, price, atr_value) -> Dict[str, Any]:
+        """Gaps, Fibonacci, S/R families, Wolfe, Camarilla -- enrichment only."""
+        try:
+            try:
+                daily = self.broker.candles(epic, "D1", 5)
+            except Exception as exc:  # no daily history: skip just the pivots
+                log.warning("%s: daily candles unavailable (%s)", epic, exc)
+                daily = []
+            return structure_module.analyse(
+                entry, structure, daily, price, atr_value, self.config.analysis
+            )
+        except Exception:  # the map must never cost you the plan
+            log.exception("%s: market map failed; continuing without it", epic)
+            return {}
 
     # ------------------------------------------------------------------ rendering
 
@@ -362,6 +380,77 @@ def _risk_text(plan: TradePlan, t: Translator) -> List[str]:
     ]
 
 
+def _digits(price: float) -> int:
+    text = repr(float(price))
+    return min(5, len(text.split(".")[1].rstrip("0"))) if "." in text else 0
+
+
+def _market_text(plan: TradePlan, t: Translator) -> List[str]:
+    """Gaps, Fibonacci and the support/resistance families, read in plain words."""
+    found = plan.market
+    if not found:
+        return []
+    digits = max(_digits(plan.reference_price), 2)
+    fmt = lambda value: f"{value:.{digits}f}"  # noqa: E731
+    lines = [t("mm.heading")]
+
+    gaps = found.get("gaps") or []
+    if gaps:
+        for gap in gaps[:2]:
+            lines.append(t(
+                "mm.gap", emoji="🟢" if gap["kind"] == "bullish" else "🔴",
+                kind=t.term("gapkind", gap["kind"]), gtype=t.term("gaptype", gap["type"]),
+                low=fmt(gap["low"]), high=fmt(gap["high"]),
+                state=t.term("gapstate", gap["state"]), size=gap["size_atr"],
+                meaning=t(f"mm.gap_meaning.{gap['type']}"),
+            ))
+    else:
+        lines.append(t("mm.gap_none"))
+
+    fib = found.get("fibonacci")
+    if fib:
+        levels = fib["levels"]
+        retr = [lv for lv in levels if lv["kind"] == "retracement"]
+        ext = next((lv for lv in levels if lv["kind"] == "extension"), None)
+        lines.append(t(
+            "mm.fib", direction=t.term("fibdir", fib["direction"]),
+            start=fmt(fib["start"]), end=fmt(fib["end"]),
+            depth=f"{max(fib['depth'], 0) * 100:.0f}",
+            result=t(f"mm.fib.{fib['zone']}", ext=fmt(ext["price"]) if ext else "-"),
+        ))
+        below = [lv for lv in retr + levels[len(retr):] if lv["role"] == "support"]
+        above = [lv for lv in retr + levels[len(retr):] if lv["role"] == "resistance"]
+        label = lambda lv: f"{fmt(lv['price'])} ({lv['ratio'] * 100:.1f}%)"  # noqa: E731
+        near = lambda group: label(min(group, key=lambda lv: abs(lv["price"] - plan.reference_price))) if group else "-"  # noqa: E731,E501
+        lines.append(t("mm.fib_levels", support=near(below), resistance=near(above)))
+
+    static = found.get("static") or {}
+    describe = lambda zone: (  # noqa: E731
+        f"{fmt(zone['price'])} (x{zone['touches']})" if zone else "-")
+    lines.append(t("mm.static", support=describe(static.get("support")),
+                   resistance=describe(static.get("resistance"))))
+
+    dynamic = found.get("dynamic") or []
+    if dynamic:
+        lines.append(t("mm.dynamic", items=t.semicolon.join(
+            f"{d['name']} {fmt(d['price'])} ({t.term('role', d['role'])})" for d in dynamic)))
+
+    wolfe = found.get("wolfe")
+    if wolfe:
+        lines.append(t("mm.wolfe", emoji="🟢" if wolfe["direction"] == "bullish" else "🔴",
+                       kind=t.term("gapkind", wolfe["direction"]),
+                       entry=fmt(wolfe["entry"]), target=fmt(wolfe["target"])))
+    else:
+        lines.append(t("mm.wolfe_none"))
+
+    cam = found.get("camarilla")
+    if cam:
+        lines.append(t("mm.camarilla", s3=fmt(cam["s3"]), s4=fmt(cam["s4"]),
+                       r3=fmt(cam["r3"]), r4=fmt(cam["r4"]), pivot=fmt(cam["pivot"]),
+                       result=t(f"mm.cam.{cam['zone']}")))
+    return lines
+
+
 def report_sections(plan: TradePlan, t: Translator) -> List[str]:
     """Everything under the title: verdict, reversal analysis, levels, capital."""
     style = plan.style or {}
@@ -379,6 +468,7 @@ def report_sections(plan: TradePlan, t: Translator) -> List[str]:
           strength=t.strength_name(plan.technical.get("strength", "")),
           news=t.bias_name(plan.fundamental.get("bias", ""), arrow=False)),
         "", "---", "",
+        *(_market_text(plan, t) + ["", "---", ""] if plan.market else []),
         t("tr.levels_heading"),
     ]
     if style and style.get("name") != "custom":

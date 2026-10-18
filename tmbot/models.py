@@ -311,6 +311,9 @@ class TradePlan:
     # Entry quality, timeframe alignment and the verdict (APPROVED / CAUTION /
     # REJECTED), separate from the direction above.
     assessment: Dict[str, Any] = field(default_factory=dict)
+    # Price gaps, Fibonacci, support/resistance families, Wolfe wave and
+    # Camarilla pivots (see analysis.structure). Descriptive only.
+    market: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def management_timeframe(self) -> str:
@@ -356,6 +359,7 @@ class TradePlan:
             style=dict(self.style),
             sizing=dict(self.sizing),
             assessment=dict(self.assessment),
+            market=dict(self.market),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -381,6 +385,7 @@ class TradePlan:
             "style": self.style,
             "sizing": self.sizing,
             "assessment": self.assessment,
+            "market": self.market,
         }
 
     @classmethod
@@ -407,6 +412,7 @@ class TradePlan:
             style=raw.get("style") or {},
             sizing=raw.get("sizing") or {},
             assessment=raw.get("assessment") or {},
+            market=raw.get("market") or {},
         )
 
 

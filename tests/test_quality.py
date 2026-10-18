@@ -96,7 +96,8 @@ class DisplayTests(unittest.TestCase):
         for heading in ("Trade Report", "Reversal Analysis & Technical Indicators",
                         "Technical Levels Details", "Risk Management & Capital"):
             self.assertIn(heading, text)
-        self.assertEqual(text.count("\n---\n"), 3)
+        self.assertEqual(text.count("\n---\n"), 4)
+        self.assertIn("Market Map", text)
         self.assertIn("**Expected Reversal Rate:**", text)
         self.assertIn("**Immediate Loss Probability:**", text)
 

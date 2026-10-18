@@ -847,6 +847,135 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "No stored plan for {epic}. Try /report {epic}.",
         "ar": "لا توجد خطة محفوظة لـ {epic}. جرّب ‎/report {epic}‎.",
     },
+    # Market map: gaps, Fibonacci, support/resistance families.
+    "mm.heading": {
+        "en": "### 🧭 **Market Map: Gaps, Fibonacci & Support/Resistance**",
+        "ar": "### 🧭 **خريطة السوق: الفجوات وفيبوناتشي والدعم والمقاومة**",
+    },
+    "mm.gap": {
+        "en": "* **Fair Value Gap:** {emoji} {kind} {gtype} gap {low} – {high} ({state}, "
+              "{size} ATR) — {meaning}",
+        "ar": "* **فجوة القيمة العادلة:** {emoji} فجوة {gtype} {kind} {low} – {high} "
+              "({state}، {size} ATR) — {meaning}",
+    },
+    "mm.gap_none": {
+        "en": "* **Fair Value Gap:** no open gap on the chart",
+        "ar": "* **فجوة القيمة العادلة:** لا توجد فجوة مفتوحة على الشارت",
+    },
+    "mm.gap_meaning.breakaway": {
+        "en": "price left a tight range; often starts a new trend",
+        "ar": "السعر خرج من نطاق ضيق؛ غالبًا يبدأ اتجاهًا جديدًا",
+    },
+    "mm.gap_meaning.continuation": {
+        "en": "inside a running trend; price often returns to fill part of it, then continues",
+        "ar": "داخل اتجاه قائم؛ يعود السعر غالبًا لملء جزء منها ثم يكمل",
+    },
+    "mm.gap_meaning.exhaustion": {
+        "en": "late in a stretched move; a warning that the trend may be running out",
+        "ar": "في نهاية حركة ممتدة؛ تحذير من قرب انتهاء الاتجاه",
+    },
+    "mm.gap_meaning.common": {
+        "en": "small gap with little meaning; usually filled quickly",
+        "ar": "فجوة صغيرة قليلة الدلالة؛ تُملأ غالبًا بسرعة",
+    },
+    "term.gapkind.bullish": {"en": "bullish", "ar": "صاعدة"},
+    "term.gapkind.bearish": {"en": "bearish", "ar": "هابطة"},
+    "term.gaptype.breakaway": {"en": "breakaway", "ar": "اختراقية"},
+    "term.gaptype.continuation": {"en": "continuation", "ar": "استمرارية"},
+    "term.gaptype.exhaustion": {"en": "exhaustion", "ar": "استنزاف"},
+    "term.gaptype.common": {"en": "common", "ar": "عادية"},
+    "term.gapstate.open": {"en": "unfilled", "ar": "غير ممتلئة"},
+    "term.gapstate.partial": {"en": "partly filled", "ar": "ممتلئة جزئيًا"},
+    "term.fibdir.up": {"en": "up", "ar": "صاعدة"},
+    "term.fibdir.down": {"en": "down", "ar": "هابطة"},
+    "term.role.support": {"en": "support", "ar": "دعم"},
+    "term.role.resistance": {"en": "resistance", "ar": "مقاومة"},
+    "mm.fib": {
+        "en": "* **Fibonacci ({direction} leg {start} → {end}):** price has retraced "
+              "{depth}% — {result}",
+        "ar": "* **فيبوناتشي (موجة {direction} {start} ← {end}):** ارتد السعر "
+              "{depth}% — {result}",
+    },
+    "mm.fib.shallow": {
+        "en": "a shallow pullback; the trend is strong and may resume soon",
+        "ar": "تراجع ضحل؛ الاتجاه قوي وقد يستأنف قريبًا",
+    },
+    "mm.fib.moderate": {
+        "en": "a normal pullback near 38.2–50%; a bounce here keeps the trend intact",
+        "ar": "تراجع طبيعي قرب 38.2–50%؛ الارتداد هنا يُبقي الاتجاه سليمًا",
+    },
+    "mm.fib.deep": {
+        "en": "a deep pullback (50–61.8%); the trend is weakening but not broken",
+        "ar": "تراجع عميق (50–61.8%)؛ الاتجاه يضعف لكنه لم ينكسر",
+    },
+    "mm.fib.golden": {
+        "en": "inside the golden pocket (61.8–78.6%), the most common reversal zone; "
+              "if it holds the trend resumes",
+        "ar": "داخل المنطقة الذهبية (61.8–78.6%) وهي أكثر مناطق الانعكاس شيوعًا؛ "
+              "إن صمدت يستأنف الاتجاه",
+    },
+    "mm.fib.very_deep": {
+        "en": "beyond 78.6%; the leg is close to being invalidated",
+        "ar": "تجاوز 78.6%؛ الموجة قريبة من الإلغاء",
+    },
+    "mm.fib.broken": {
+        "en": "beyond 100%; the leg is invalidated, do not trade it as a pullback",
+        "ar": "تجاوز 100%؛ الموجة ملغاة، لا تتعامل معها كتراجع",
+    },
+    "mm.fib.extension": {
+        "en": "price is past the end of the leg and in extension territory toward {ext}",
+        "ar": "السعر تجاوز نهاية الموجة وهو في منطقة الامتداد نحو {ext}",
+    },
+    "mm.fib_levels": {
+        "en": "* **Fibonacci Support/Resistance:** support {support} | resistance {resistance}",
+        "ar": "* **دعم ومقاومة فيبوناتشي:** الدعم {support} | المقاومة {resistance}",
+    },
+    "mm.static": {
+        "en": "* **Static Support/Resistance:** support {support} | resistance {resistance} "
+              "(x = times tested)",
+        "ar": "* **الدعم والمقاومة الثابتة:** الدعم {support} | المقاومة {resistance} "
+              "(x = عدد مرات الاختبار)",
+    },
+    "mm.dynamic": {
+        "en": "* **Dynamic (Moving) Support/Resistance:** {items}",
+        "ar": "* **الدعم والمقاومة المتحركة:** {items}",
+    },
+    "mm.wolfe": {
+        "en": "* **Wolfe Wave:** {emoji} {kind} pattern — entry zone {entry}, projected "
+              "target {target}",
+        "ar": "* **موجات وولف:** {emoji} نموذج {kind} — منطقة الدخول {entry}، "
+              "الهدف المتوقع {target}",
+    },
+    "mm.wolfe_none": {
+        "en": "* **Wolfe Wave:** no valid pattern right now",
+        "ar": "* **موجات وولف:** لا يوجد نموذج صالح حاليًا",
+    },
+    "mm.camarilla": {
+        "en": "* **Camarilla Pivots:** S3 {s3} | S4 {s4} | R3 {r3} | R4 {r4} (pivot {pivot}) "
+              "— {result}",
+        "ar": "* **محاور كاماريلا:** S3 {s3} | S4 {s4} | R3 {r3} | R4 {r4} "
+              "(المحور {pivot}) — {result}",
+    },
+    "mm.cam.range": {
+        "en": "between S3 and R3: a range day, S3/R3 are the edges to fade",
+        "ar": "بين S3 وR3: يوم نطاق، وS3/R3 حدود يمكن التداول عكسها",
+    },
+    "mm.cam.above_r3": {
+        "en": "above R3: strong buying, expect a rejection or a push to R4",
+        "ar": "فوق R3: شراء قوي، توقع رفضًا أو اندفاعًا نحو R4",
+    },
+    "mm.cam.above_r4": {
+        "en": "above R4: a breakout, buy the pullbacks",
+        "ar": "فوق R4: اختراق، اشترِ عند التراجعات",
+    },
+    "mm.cam.below_s3": {
+        "en": "below S3: strong selling, expect a rejection or a push to S4",
+        "ar": "تحت S3: بيع قوي، توقع رفضًا أو اندفاعًا نحو S4",
+    },
+    "mm.cam.below_s4": {
+        "en": "below S4: a breakdown, sell the bounces",
+        "ar": "تحت S4: كسر هابط، بِع عند الارتدادات",
+    },
     # Structured trade notification (render_text).
     "tr.title": {
         "en": "### {emoji} **{tag}{symbol} Trade Report**",
