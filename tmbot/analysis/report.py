@@ -489,15 +489,19 @@ def report_sections(plan: TradePlan, t: Translator) -> List[str]:
     return lines
 
 
-def render_full(plan: TradePlan, t: Optional[Translator] = None, tag: str = "") -> str:
+def render_full(
+    plan: TradePlan, t: Optional[Translator] = None, tag: str = "", notice: str = ""
+) -> str:
     """The long report: every section, for /full, /now and the report file.
 
     ``tag`` is the environment marker (e.g. ``[DEMO] ``) so it lands inside the
     title; notifiers skip their own prefix when the message already has it.
     """
     t = t or Translator()
-    return "\n".join([t("tr.title", emoji="📉", tag=tag, symbol=plan.epic), "",
-                      *report_sections(plan, t)])
+    head = [t("tr.title", emoji="📉", tag=tag, symbol=plan.epic), ""]
+    if notice:
+        head += [notice, ""]
+    return "\n".join([*head, *report_sections(plan, t)])
 
 
 # ------------------------------------------------------------------ short message
@@ -634,3 +638,55 @@ def render_text(plan: TradePlan, t: Optional[Translator] = None, tag: str = "") 
     else:
         lines.append(t("sm.decision", decision=decision))
     return "\n".join(lines)
+
+
+# ------------------------------------------------------------------ short or full
+
+LOW_SIGNAL = 40.0       # below this the evidence is thin
+BIG_LOSS_CHANCE = 0.60  # this likely to hit the stop before TP1
+
+
+def detail_reasons(plan: TradePlan, t: Translator) -> List[str]:
+    """Why this plan deserves the long report; empty when the short one will do.
+
+    Two kinds of trigger: the analysis is unsure (weak signal, no direction,
+    timeframes disagreeing or unreadable) or the risk is big (a reversal is
+    likely, a stop-out is likely, or the risk limit cannot be met or checked).
+    A trade that is merely rejected for a poor entry stays short: "skip it"
+    needs no extra reading.
+    """
+    reasons: List[str] = []
+    found = plan.assessment or {}
+    if plan.bias is Bias.NEUTRAL:
+        reasons.append(t("detail.neutral"))
+    elif plan.confidence < LOW_SIGNAL:
+        reasons.append(t("detail.low_signal", strength=f"{plan.confidence:.0f}"))
+    alignment = found.get("alignment")
+    if alignment == "CONFLICT":
+        reasons.append(t("detail.conflict", timeframe=found.get("higher_timeframe", "")))
+    elif alignment == "UNCERTAIN":
+        reasons.append(t("detail.no_higher"))
+    if reversal_level(plan) == "high":
+        reasons.append(t("detail.reversal"))
+    chance = loss_probability(plan)
+    if chance >= BIG_LOSS_CHANCE:
+        reasons.append(t("detail.loss", percent=f"{round(chance * 100 / 5) * 5:.0f}"))
+    verdict = (plan.sizing or {}).get("verdict")
+    if verdict == "REJECTED":
+        reasons.append(t("detail.risk_rejected"))
+    elif verdict == "UNCHECKED" or (plan.assessment and not plan.sizing):
+        reasons.append(t("detail.risk_unchecked"))
+    return reasons
+
+
+def render_message(
+    plan: TradePlan, t: Optional[Translator] = None, tag: str = "", *, auto_full: bool = True
+) -> str:
+    """What to send: the short message, or the long report when it is warranted."""
+    t = t or Translator()
+    if auto_full:
+        reasons = detail_reasons(plan, t)
+        if reasons:
+            return render_full(plan, t, tag, notice=t(
+                "detail.notice", reasons=t.semicolon.join(reasons)))
+    return render_text(plan, t, tag)
