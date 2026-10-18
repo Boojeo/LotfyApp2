@@ -604,10 +604,6 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "Today: open {open}, {change} ({percent}%) | high {high} low {low}",
         "ar": "اليوم: الافتتاح {open}، {change} ({percent}%) | الأعلى {high} الأدنى {low}",
     },
-    "now.levels": {
-        "en": "TP1 {tp1}\nTP2 {tp2}\nTP3 {tp3}\nSL  {sl}",
-        "ar": "TP1 {tp1}\nTP2 {tp2}\nTP3 {tp3}\nSL  {sl}",
-    },
     "now.trades": {
         "en": "Your open trades ({count}):",
         "ar": "صفقاتك المفتوحة ({count}):",
@@ -717,10 +713,6 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "{epic} -- daily plan {timestamp}",
         "ar": "{epic} — الخطة اليومية {timestamp}",
     },
-    "report.bias": {
-        "en": "Direction bias: {bias}  (signal strength {confidence}/100)",
-        "ar": "الاتجاه المتوقع: {bias}  (قوة الإشارة {confidence}/100)",
-    },
     "report.advisory": {
         "en": (
             "Bias is NEUTRAL. Levels below are reference only -- the bot will "
@@ -731,45 +723,6 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "الاتجاه محايد. المستويات أدناه للاسترشاد فقط — سيدير البوت أي مركز "
             "تفتحه، لكن لا شيء هنا يدعو لفتح صفقة."
         ),
-    },
-    "report.reference": {
-        "en": "Reference price {price} | ATR {atr} | risk to stop {risk}",
-        "ar": "السعر المرجعي {price} | متوسط المدى الحقيقي {atr} | المخاطرة حتى الوقف {risk}",
-    },
-    "report.style": {
-        "en": "Style: {style} (about {hours} h) | levels {entry}, structure "
-              "{structure}, managed on {management}",
-        "ar": "النمط: {style} (حوالي {hours} ساعة) | المستويات {entry}، الهيكل "
-              "{structure}، الإدارة على {management}",
-    },
-    "risk.ok": {
-        "en": "Risk {percent}% of equity = max {max_money} {currency}: open {deals} x "
-              "{lots} lots ({targets}) | loss at SL {loss} {currency} ({loss_percent}%)",
-        "ar": "مخاطرة {percent}% من رأس المال = حد أقصى {max_money} {currency}: افتح "
-              "{deals} × {lots} لوت ({targets}) | الخسارة عند الوقف {loss} {currency} "
-              "({loss_percent}%)",
-    },
-    "risk.reduced": {
-        "en": "Risk limit: {planned} deals at the {min_lot} minimum would be over "
-              "{percent}% -- open {deals} x {lots} lots instead ({targets}) | loss at SL "
-              "{loss} {currency} ({loss_percent}%)",
-        "ar": "حد المخاطرة: {planned} صفقات بالحد الأدنى {min_lot} تتجاوز {percent}% -- "
-              "افتح {deals} × {lots} لوت بدلًا منها ({targets}) | الخسارة عند الوقف "
-              "{loss} {currency} ({loss_percent}%)",
-    },
-    "risk.rejected": {
-        "en": "REJECTED -- RISK LIMIT: even 1 deal at the {min_lot} minimum loses "
-              "{min_money} {currency} ({min_percent}%) at the stop, over your {percent}% "
-              "({max_money} {currency}). Skip this trade.",
-        "ar": "مرفوضة -- حد المخاطرة: حتى صفقة واحدة بالحد الأدنى {min_lot} تخسر "
-              "{min_money} {currency} ({min_percent}%) عند الوقف، أكثر من {percent}% "
-              "({max_money} {currency}). تجنّب هذه الصفقة.",
-    },
-    "risk.detail": {
-        "en": "Ideal {ideal} lots total | broker min {min_lot}, step {step}, max {max_lot} "
-              "| equity {equity} {currency}",
-        "ar": "الحجم المثالي {ideal} لوت إجمالًا | الحد الأدنى للوسيط {min_lot}، الخطوة "
-              "{step}، الحد الأقصى {max_lot} | رأس المال {equity} {currency}",
     },
     "risk.unchecked": {
         "en": "Risk at stop: NOT CHECKED (account or contract size unavailable) -- size "
@@ -789,12 +742,6 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "ar": "تحذير: صفقاتك ({deals}) تخسر {money} عند الوقف = {percent}% من رأس المال "
               "-- أكثر من حدك {limit}%. فكّر في إغلاق صفقة أو تقليل الحجم.",
     },
-    "report.strength_note": {
-        "en": "Signal strength measures how strong and consistent the evidence is. "
-              "It is not a probability of winning.",
-        "ar": "قوة الإشارة تقيس قوة الأدلة واتساقها، وليست احتمال ربح الصفقة.",
-    },
-    "verdict.line": {"en": "VERDICT: {verdict} -- {reason}", "ar": "الحكم: {verdict} -- {reason}"},
     "verdict.approved": {
         "en": "direction, entry and risk all check out",
         "ar": "الاتجاه ونقطة الدخول والمخاطرة كلها سليمة",
@@ -822,10 +769,6 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "term.verdict.approved": {"en": "APPROVED", "ar": "مقبولة"},
     "term.verdict.caution": {"en": "CAUTION", "ar": "بحذر"},
     "term.verdict.rejected": {"en": "REJECTED", "ar": "مرفوضة"},
-    "quality.line": {
-        "en": "Entry quality: {quality}{reasons}",
-        "ar": "جودة نقطة الدخول: {quality}{reasons}",
-    },
     "term.quality.good": {"en": "GOOD", "ar": "جيدة"},
     "term.quality.weak": {"en": "WEAK", "ar": "ضعيفة"},
     "term.quality.poor": {"en": "POOR", "ar": "سيئة"},
@@ -866,10 +809,6 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "risk limit cannot be met",
         "ar": "لا يمكن الالتزام بحد المخاطرة",
     },
-    "alignment.line": {
-        "en": "Timeframes: {higher} {higher_bias} vs {entry} {bias} -> {alignment}",
-        "ar": "الأطر الزمنية: {higher} {higher_bias} مقابل {entry} {bias} ← {alignment}",
-    },
     "term.alignment.aligned": {"en": "ALIGNED", "ar": "متوافقة"},
     "term.alignment.partial": {"en": "PARTIAL", "ar": "توافق جزئي"},
     "term.alignment.conflict": {"en": "CONFLICT", "ar": "متعارضة"},
@@ -899,10 +838,6 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "report.liquidity_heading": {"en": "Liquidity zones", "ar": "مناطق السيولة"},
     "report.headlines_heading": {"en": "Headlines", "ar": "العناوين"},
     "report.plan_id": {"en": "plan id: {id}", "ar": "معرّف الخطة: {id}"},
-    "report.tech_label": {
-        "en": "tech {score} / {strength} | news {bias} ({source})",
-        "ar": "فني {score} / {strength} | أخبار {bias} ({source})",
-    },
     "report.advisory_tag": {"en": "  [advisory only]", "ar": "  [للاسترشاد فقط]"},
     "report.failed": {
         "en": "{epic}: report failed -- {error}",
@@ -912,10 +847,253 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "No stored plan for {epic}. Try /report {epic}.",
         "ar": "لا توجد خطة محفوظة لـ {epic}. جرّب ‎/report {epic}‎.",
     },
+    # Market map: gaps, Fibonacci, support/resistance families.
+    "mm.heading": {
+        "en": "### 🧭 **Market Map: Gaps, Fibonacci & Support/Resistance**",
+        "ar": "### 🧭 **خريطة السوق: الفجوات وفيبوناتشي والدعم والمقاومة**",
+    },
+    "mm.gap": {
+        "en": "* **Fair Value Gap:** {emoji} {kind} {gtype} gap {low} – {high} ({state}, "
+              "{size} ATR) — {meaning}",
+        "ar": "* **فجوة القيمة العادلة:** {emoji} فجوة {gtype} {kind} {low} – {high} "
+              "({state}، {size} ATR) — {meaning}",
+    },
+    "mm.gap_none": {
+        "en": "* **Fair Value Gap:** no open gap on the chart",
+        "ar": "* **فجوة القيمة العادلة:** لا توجد فجوة مفتوحة على الشارت",
+    },
+    "mm.gap_meaning.breakaway": {
+        "en": "price left a tight range; often starts a new trend",
+        "ar": "السعر خرج من نطاق ضيق؛ غالبًا يبدأ اتجاهًا جديدًا",
+    },
+    "mm.gap_meaning.continuation": {
+        "en": "inside a running trend; price often returns to fill part of it, then continues",
+        "ar": "داخل اتجاه قائم؛ يعود السعر غالبًا لملء جزء منها ثم يكمل",
+    },
+    "mm.gap_meaning.exhaustion": {
+        "en": "late in a stretched move; a warning that the trend may be running out",
+        "ar": "في نهاية حركة ممتدة؛ تحذير من قرب انتهاء الاتجاه",
+    },
+    "mm.gap_meaning.common": {
+        "en": "small gap with little meaning; usually filled quickly",
+        "ar": "فجوة صغيرة قليلة الدلالة؛ تُملأ غالبًا بسرعة",
+    },
+    "term.gapkind.bullish": {"en": "bullish", "ar": "صاعدة"},
+    "term.gapkind.bearish": {"en": "bearish", "ar": "هابطة"},
+    "term.gaptype.breakaway": {"en": "breakaway", "ar": "اختراقية"},
+    "term.gaptype.continuation": {"en": "continuation", "ar": "استمرارية"},
+    "term.gaptype.exhaustion": {"en": "exhaustion", "ar": "استنزاف"},
+    "term.gaptype.common": {"en": "common", "ar": "عادية"},
+    "term.gapstate.open": {"en": "unfilled", "ar": "غير ممتلئة"},
+    "term.gapstate.partial": {"en": "partly filled", "ar": "ممتلئة جزئيًا"},
+    "term.fibdir.up": {"en": "up", "ar": "صاعدة"},
+    "term.fibdir.down": {"en": "down", "ar": "هابطة"},
+    "term.role.support": {"en": "support", "ar": "دعم"},
+    "term.role.resistance": {"en": "resistance", "ar": "مقاومة"},
+    "mm.fib": {
+        "en": "* **Fibonacci ({direction} leg {start} → {end}):** price has retraced "
+              "{depth}% — {result}",
+        "ar": "* **فيبوناتشي (موجة {direction} {start} ← {end}):** ارتد السعر "
+              "{depth}% — {result}",
+    },
+    "mm.fib.shallow": {
+        "en": "a shallow pullback; the trend is strong and may resume soon",
+        "ar": "تراجع ضحل؛ الاتجاه قوي وقد يستأنف قريبًا",
+    },
+    "mm.fib.moderate": {
+        "en": "a normal pullback near 38.2–50%; a bounce here keeps the trend intact",
+        "ar": "تراجع طبيعي قرب 38.2–50%؛ الارتداد هنا يُبقي الاتجاه سليمًا",
+    },
+    "mm.fib.deep": {
+        "en": "a deep pullback (50–61.8%); the trend is weakening but not broken",
+        "ar": "تراجع عميق (50–61.8%)؛ الاتجاه يضعف لكنه لم ينكسر",
+    },
+    "mm.fib.golden": {
+        "en": "inside the golden pocket (61.8–78.6%), the most common reversal zone; "
+              "if it holds the trend resumes",
+        "ar": "داخل المنطقة الذهبية (61.8–78.6%) وهي أكثر مناطق الانعكاس شيوعًا؛ "
+              "إن صمدت يستأنف الاتجاه",
+    },
+    "mm.fib.very_deep": {
+        "en": "beyond 78.6%; the leg is close to being invalidated",
+        "ar": "تجاوز 78.6%؛ الموجة قريبة من الإلغاء",
+    },
+    "mm.fib.broken": {
+        "en": "beyond 100%; the leg is invalidated, do not trade it as a pullback",
+        "ar": "تجاوز 100%؛ الموجة ملغاة، لا تتعامل معها كتراجع",
+    },
+    "mm.fib.extension": {
+        "en": "price is past the end of the leg and in extension territory toward {ext}",
+        "ar": "السعر تجاوز نهاية الموجة وهو في منطقة الامتداد نحو {ext}",
+    },
+    "mm.fib_levels": {
+        "en": "* **Fibonacci Support/Resistance:** support {support} | resistance {resistance}",
+        "ar": "* **دعم ومقاومة فيبوناتشي:** الدعم {support} | المقاومة {resistance}",
+    },
+    "mm.static": {
+        "en": "* **Static Support/Resistance:** support {support} | resistance {resistance} "
+              "(x = times tested)",
+        "ar": "* **الدعم والمقاومة الثابتة:** الدعم {support} | المقاومة {resistance} "
+              "(x = عدد مرات الاختبار)",
+    },
+    "mm.dynamic": {
+        "en": "* **Dynamic (Moving) Support/Resistance:** {items}",
+        "ar": "* **الدعم والمقاومة المتحركة:** {items}",
+    },
+    "mm.wolfe": {
+        "en": "* **Wolfe Wave:** {emoji} {kind} pattern — entry zone {entry}, projected "
+              "target {target}",
+        "ar": "* **موجات وولف:** {emoji} نموذج {kind} — منطقة الدخول {entry}، "
+              "الهدف المتوقع {target}",
+    },
+    "mm.wolfe_none": {
+        "en": "* **Wolfe Wave:** no valid pattern right now",
+        "ar": "* **موجات وولف:** لا يوجد نموذج صالح حاليًا",
+    },
+    "mm.camarilla": {
+        "en": "* **Camarilla Pivots:** S3 {s3} | S4 {s4} | R3 {r3} | R4 {r4} (pivot {pivot}) "
+              "— {result}",
+        "ar": "* **محاور كاماريلا:** S3 {s3} | S4 {s4} | R3 {r3} | R4 {r4} "
+              "(المحور {pivot}) — {result}",
+    },
+    "mm.cam.range": {
+        "en": "between S3 and R3: a range day, S3/R3 are the edges to fade",
+        "ar": "بين S3 وR3: يوم نطاق، وS3/R3 حدود يمكن التداول عكسها",
+    },
+    "mm.cam.above_r3": {
+        "en": "above R3: strong buying, expect a rejection or a push to R4",
+        "ar": "فوق R3: شراء قوي، توقع رفضًا أو اندفاعًا نحو R4",
+    },
+    "mm.cam.above_r4": {
+        "en": "above R4: a breakout, buy the pullbacks",
+        "ar": "فوق R4: اختراق، اشترِ عند التراجعات",
+    },
+    "mm.cam.below_s3": {
+        "en": "below S3: strong selling, expect a rejection or a push to S4",
+        "ar": "تحت S3: بيع قوي، توقع رفضًا أو اندفاعًا نحو S4",
+    },
+    "mm.cam.below_s4": {
+        "en": "below S4: a breakdown, sell the bounces",
+        "ar": "تحت S4: كسر هابط، بِع عند الارتدادات",
+    },
+    # Structured trade notification (render_text).
+    "tr.title": {
+        "en": "### {emoji} **{tag}{symbol} Trade Report**",
+        "ar": "### {emoji} **{tag}تقرير صفقة {symbol}**",
+    },
+    "tr.trend": {
+        "en": "* **Expected Trend:** {emoji} {direction} (Signal Strength: "
+              "{strength}/100 - {quality})",
+        "ar": "* **الاتجاه المتوقع:** {emoji} {direction} (قوة الإشارة: "
+              "{strength}/100 - {quality})",
+    },
+    "tr.verdict": {
+        "en": "* **Verdict:** {emoji} **{verdict}** — {reason}",
+        "ar": "* **الحكم:** {emoji} **{verdict}** — {reason}",
+    },
+    "tr.reason": {"en": "* **Reason:** {reason}", "ar": "* **السبب:** {reason}"},
+    "tr.reversal_heading": {
+        "en": "### 🔄 **Reversal Analysis & Technical Indicators**",
+        "ar": "### 🔄 **تحليل الانعكاس والمؤشرات الفنية**",
+    },
+    "tr.reversal_rate": {
+        "en": "* **Expected Reversal Rate:** {emoji} {description}",
+        "ar": "* **معدل الانعكاس المتوقع:** {emoji} {description}",
+    },
+    "tr.loss_probability": {
+        "en": "* **Immediate Loss Probability:** {text}",
+        "ar": "* **احتمال الخسارة الفورية:** {text}",
+    },
+    "tr.technical": {
+        "en": "* **Technical Analysis:** {score} / {strength} | **News:** {news}",
+        "ar": "* **التحليل الفني:** {score} / {strength} | **الأخبار:** {news}",
+    },
+    "tr.levels_heading": {
+        "en": "### 📊 **Technical Levels Details**",
+        "ar": "### 📊 **تفاصيل المستويات الفنية**",
+    },
+    "tr.style": {
+        "en": "* **Style:** {style} | Levels: {levels}, Structure: {structure}, "
+              "Managed on {managed}",
+        "ar": "* **النمط:** {style} | المستويات: {levels}، الهيكل: {structure}، "
+              "الإدارة على {managed}",
+    },
+    "tr.reference": {"en": "* **Reference Price:** {value}", "ar": "* **السعر المرجعي:** {value}"},
+    "tr.atr": {
+        "en": "* **Average True Range (ATR):** {value}",
+        "ar": "* **متوسط المدى الحقيقي (ATR):** {value}",
+    },
+    "tr.risk_to_stop": {
+        "en": "* **Risk to Stop:** {value}", "ar": "* **المخاطرة حتى الوقف:** {value}",
+    },
+    "tr.sl": {"en": "* **Stop Loss (SL):** {value}", "ar": "* **وقف الخسارة (SL):** {value}"},
+    "tr.tp": {
+        "en": "* **TP{n}:** {price} ({r}R)", "ar": "* **الهدف {n}:** {price} ({r}R)",
+    },
+    "tr.risk_heading": {
+        "en": "### ⚠️ **Risk Management & Capital**",
+        "ar": "### ⚠️ **إدارة المخاطر ورأس المال**",
+    },
+    "tr.equity": {
+        "en": "* **Current Equity:** {equity} {currency}",
+        "ar": "* **رأس المال الحالي:** {equity} {currency}",
+    },
+    "tr.allowed_risk": {
+        "en": "* **Allowed Risk Limit ({percent}%):** {money} {currency}",
+        "ar": "* **حد المخاطرة المسموح ({percent}%):** {money} {currency}",
+    },
+    "tr.min_loss": {
+        "en": "* **Loss at Minimum Size ({min_lot} lot):** {money} {currency} "
+              "(loses {percent}%, which {limit})",
+        "ar": "* **الخسارة عند الحد الأدنى ({min_lot} لوت):** {money} {currency} "
+              "(تخسر {percent}%، وهذا {limit})",
+    },
+    "tr.limit_exceeds": {"en": "exceeds your limit", "ar": "يتجاوز حدك"},
+    "tr.limit_within": {"en": "is within your limit", "ar": "ضمن حدك"},
+    "tr.ideal_size": {
+        "en": "* **Ideal Size Suggested:** {ideal} lots total (Broker minimum is {min_lot})",
+        "ar": "* **الحجم المثالي المقترح:** {ideal} لوت إجمالًا "
+              "(الحد الأدنى للوسيط {min_lot})",
+    },
+    "tr.final": {"en": "* **Final Decision:** {action}", "ar": "* **القرار النهائي:** {action}"},
+    "tr.action_open": {
+        "en": "Open {deals} x {lots} lots ({targets}) — loss at SL {money} {currency} "
+              "({percent}%)",
+        "ar": "افتح {deals} × {lots} لوت ({targets}) — الخسارة عند الوقف {money} "
+              "{currency} ({percent}%)",
+    },
+    "tr.action_skip": {"en": "Skip this trade", "ar": "تجنّب هذه الصفقة"},
+    "tr.action_manual": {
+        "en": "Risk could not be checked — size this trade yourself",
+        "ar": "تعذّر التحقق من المخاطرة — حدد الحجم بنفسك",
+    },
+    "tr.risk_unavailable": {
+        "en": "* Account or contract data unavailable — risk not checked",
+        "ar": "* بيانات الحساب أو العقد غير متاحة — لم يتم التحقق من المخاطرة",
+    },
+    "tr.loss_text": {
+        "en": "{emoji} ~{percent}% chance the stop is hit before TP1 (rough estimate, "
+              "not a forecast)",
+        "ar": "{emoji} حوالي {percent}% احتمال ضرب الوقف قبل الهدف الأول "
+              "(تقدير تقريبي وليس توقعًا)",
+    },
+    "tr.reversal.low": {
+        "en": "Low — trend evidence is consistent", "ar": "منخفض — أدلة الاتجاه متسقة",
+    },
+    "tr.reversal.medium": {
+        "en": "Medium — some signs of a pullback", "ar": "متوسط — بعض علامات التراجع",
+    },
+    "tr.reversal.high": {
+        "en": "High — a turn against this trade is likely",
+        "ar": "مرتفع — انعكاس ضد هذه الصفقة محتمل",
+    },
+    "term.signal.strong": {"en": "Strong", "ar": "قوية"},
+    "term.signal.moderate": {"en": "Moderate", "ar": "متوسطة"},
+    "term.signal.weak": {"en": "Weak", "ar": "ضعيفة"},
     "report.update_heading": {"en": "{epic} plan update:", "ar": "تحديث خطة {epic}:"},
     "report.update_bias": {
-        "en": "bias {old} -> {new} (signal strength {confidence})",
-        "ar": "الاتجاه {old} ← {new} (قوة الإشارة {confidence})",
+        "en": "Expected Trend {old} -> {new} (Signal Strength: {confidence}/100)",
+        "ar": "الاتجاه المتوقع {old} ← {new} (قوة الإشارة: {confidence}/100)",
     },
     "report.update_levels": {
         "en": "New levels: SL {sl} | TP1 {tp1} TP2 {tp2} TP3 {tp3}",

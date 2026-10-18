@@ -157,11 +157,11 @@ class ReportTests(unittest.TestCase):
 
     def test_the_report_says_the_style_why_and_the_lot_size(self):
         text = render_text(self.build(M15=UP, H1=FLAT))
-        self.assertIn("Style: Scalp", text)
-        self.assertIn("managed on M5", text)
-        self.assertIn("no strong trend on H1", text)
-        self.assertIn("open 3 x", text)
-        self.assertIn("loss at SL", text)
+        self.assertIn("**Style:** Scalp", text)
+        self.assertIn("Managed on M5", text)
+        self.assertIn("**Ideal Size Suggested:**", text)
+        self.assertIn("**Allowed Risk Limit (", text)
+        self.assertIn("**Loss at Minimum Size (", text)
 
         arabic = render_text(self.build(M15=UP, H1=FLAT), Translator("ar"))
         self.assertIn("سكالبينج", arabic)
@@ -182,7 +182,7 @@ class ReportTests(unittest.TestCase):
         raw.pop("sizing")
         old = TradePlan.from_dict(raw)
         self.assertEqual(old.management_timeframe, "")
-        self.assertNotIn("Style:", render_text(old))
+        self.assertNotIn("**Style:**", render_text(old))
 
 
 class ManagementTests(unittest.TestCase):

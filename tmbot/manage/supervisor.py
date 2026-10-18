@@ -24,11 +24,9 @@ from ..analysis import risk as risk_module
 from ..analysis import style as style_module
 from ..analysis.report import (
     ReportBuilder,
-    assessment_lines,
     render_markdown,
     render_text,
-    sizing_lines,
-    style_lines,
+    report_sections,
 )
 from ..broker.base import BrokerAdapter, PartialCloseStrategy
 from ..config import Config, resolve_timezone
@@ -326,10 +324,10 @@ class Supervisor:
         ]
         if plan.style.get("automatic"):
             parts.append(self.t(
-                "report.style", style=self.t.term("style", plan.style.get("name", "")),
-                hours=plan.style.get("hours", ""), entry=plan.style.get("entry", ""),
+                "tr.style", style=self.t.term("style", plan.style.get("name", "")),
+                levels=plan.style.get("entry", ""),
                 structure=plan.style.get("structure", ""),
-                management=trade.management_timeframe or plan.style.get("management", ""),
+                managed=trade.management_timeframe or plan.style.get("management", ""),
             ))
 
         rules = self.t("adoption.plan_rules",
@@ -778,20 +776,7 @@ class Supervisor:
 
         plan = self._fresh_plan(epic)
 
-        def gap(level: float) -> str:
-            return f"{level} ({level - price:+.{digits}f})"
-
-        lines += ["", self.t("now.analysis")]
-        lines.append(
-            self.t("report.bias", bias=self.t.bias_name(plan.bias),
-                   confidence=f"{plan.confidence:.0f}")
-            + (self.t("report.advisory_tag") if plan.advisory_only else "")
-        )
-        lines += assessment_lines(plan, self.t)
-        lines += style_lines(plan, self.t)
-        lines.append(self.t("now.levels", tp1=gap(plan.tp1), tp2=gap(plan.tp2),
-                            tp3=gap(plan.tp3), sl=gap(plan.sl)))
-        lines += sizing_lines(plan, self.t)
+        lines += ["", self.t("now.analysis"), *report_sections(plan, self.t)]
 
         lines.append("")
         lines += self._now_signals(plan)
@@ -1089,10 +1074,13 @@ class Supervisor:
                 continue
             self._publish_plan(plan)
 
+    def _env_tag(self) -> str:
+        return f"[{self.config.broker.environment.upper()}] "
+
     def _publish_plan(self, plan: TradePlan, *, notify: bool = True) -> str:
         """Write the markdown, draw the chart, and push both out."""
         self._write_report_file(plan)
-        caption = render_text(plan, self.t)
+        caption = render_text(plan, self.t, tag=self._env_tag())
         if not notify:
             return caption
         path = self._render_chart(plan)
@@ -1132,7 +1120,7 @@ class Supervisor:
         try:
             directory.mkdir(parents=True, exist_ok=True)
             path = directory / f"{plan.epic}-{plan.created_at:%Y%m%d-%H%M}.md"
-            path.write_text(render_markdown(plan, self.t), encoding="utf-8")
+            path.write_text(render_markdown(plan, self.t, tag=self._env_tag()), encoding="utf-8")
             log.info("wrote %s", path)
         except OSError as exc:
             log.warning("could not write report file: %s", exc)
@@ -1304,7 +1292,7 @@ class Supervisor:
         if not epic:
             return self.t("command.plan_usage")
         plan = self.store.latest_plan(epic)
-        return render_text(plan, self.t) if plan else self.t("report.no_plan", epic=epic)
+        return render_text(plan, self.t, tag=self._env_tag()) if plan else self.t("report.no_plan", epic=epic)
 
     def close_command(self, argument: str) -> str:
         trade = self.store.trade_by_short_id(argument.strip())

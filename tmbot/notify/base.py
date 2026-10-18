@@ -23,7 +23,9 @@ class Notifier(ABC):
         self.tag = tag
 
     def decorate(self, message: str) -> str:
-        return f"{self.tag}{message}" if self.tag else message
+        if not self.tag or self.tag.strip() in message.split("\n", 1)[0]:
+            return message  # already tagged inside the title
+        return f"{self.tag}{message}"
 
     @abstractmethod
     def send(self, message: str, *, level: str = "info") -> None:
