@@ -59,6 +59,7 @@ PAUSED_KEY = "paused"
 LANGUAGE_KEY = "language"
 LAST_REPORT_KEY = "last_daily_report"
 LAST_REFRESH_KEY = "last_intraday_refresh"
+MESSAGE_MODE_KEY = "message_mode"      # "auto" | "short"
 
 
 def _opening_order(position: BrokerPosition) -> tuple:
@@ -1084,7 +1085,7 @@ class Supervisor:
         self._write_report_file(plan)
         caption = render_message(
             plan, self.t, tag=self._env_tag(),
-            auto_full=self.config.report.auto_full_report,
+            auto_full=self.auto_full(),
         )
         if not notify:
             return caption
@@ -1201,6 +1202,8 @@ class Supervisor:
         self.notifier.register("report", self.report_command)
         self.notifier.register("plan", self.plan_command)
         self.notifier.register("full", self.full_command)
+        self.notifier.register("short", self.short_command)
+        self.notifier.register("auto", self.auto_command)
         self.notifier.register("now", self.now_command)
         self.notifier.register("live", self.now_command)
         self.notifier.register("close", self.close_command)
@@ -1299,6 +1302,25 @@ class Supervisor:
             return self.t("command.plan_usage")
         plan = self.store.latest_plan(epic)
         return render_text(plan, self.t, tag=self._env_tag()) if plan else self.t("report.no_plan", epic=epic)
+
+    def auto_full(self) -> bool:
+        """Whether a weak or risky plan is sent as the long report.
+
+        ``/short`` and ``/auto`` choose this from chat and are remembered;
+        until one is used, ``report.auto_full_report`` decides.
+        """
+        mode = self.store.get(MESSAGE_MODE_KEY)
+        if mode in ("auto", "short"):
+            return mode == "auto"
+        return self.config.report.auto_full_report
+
+    def short_command(self, argument: str) -> str:
+        self.store.set(MESSAGE_MODE_KEY, "short")
+        return self.t("command.short_on")
+
+    def auto_command(self, argument: str) -> str:
+        self.store.set(MESSAGE_MODE_KEY, "auto")
+        return self.t("command.auto_on")
 
     def full_command(self, argument: str) -> str:
         """The stored plan with every section -- the long form of /plan."""

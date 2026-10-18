@@ -202,6 +202,56 @@ class AutoFullTests(unittest.TestCase):
         text = render_message(plan, Translator("ar"))
         self.assertIn("تقرير كامل لأن", text)
         self.assertNotIn("[detail.", text)
+ 
+
+class ModeCommandTests(unittest.TestCase):
+    def setUp(self):
+        self.supervisor, broker, self.store, _ = build_supervisor()
+        broker.set_candles("GOLD", "D1", candles(5, end=3390.0))
+        self.supervisor.start()
+
+    def test_short_stops_the_long_report_and_is_remembered(self):
+        self.assertTrue(self.supervisor.auto_full())
+        reply = self.supervisor.short_command("")
+        self.assertIn("Short messages from now on", reply)
+        self.assertFalse(self.supervisor.auto_full())
+        self.assertEqual(self.store.get("message_mode"), "short")
+
+    def test_auto_brings_it_back(self):
+        self.supervisor.short_command("")
+        reply = self.supervisor.auto_command("")
+        self.assertIn("Automatic", reply)
+        self.assertTrue(self.supervisor.auto_full())
+
+    def test_a_weak_plan_is_sent_short_after_short(self):
+        plan = self.supervisor._plan_for("GOLD", force=True)
+        plan.confidence = 5.0
+        self.store.save_plan(plan)
+        self.supervisor.short_command("")
+        sent = self.supervisor._publish_plan(plan, notify=False)
+        self.assertNotIn("Full report because", sent)
+        self.assertNotIn("Reversal Analysis", sent)
+        self.supervisor.auto_command("")
+        self.assertIn("Full report because", self.supervisor._publish_plan(plan, notify=False))
+
+    def test_the_config_default_applies_until_a_command_is_used(self):
+        self.supervisor.config.report.auto_full_report = False
+        self.assertFalse(self.supervisor.auto_full())
+        self.supervisor.auto_command("")
+        self.assertTrue(self.supervisor.auto_full())
+
+    def test_the_commands_are_registered_with_the_notifier(self):
+        seen = {}
+        self.supervisor.notifier.register = lambda name, handler: seen.__setitem__(name, handler)
+        self.supervisor._register_commands()
+        self.assertIn("short", seen)
+        self.assertIn("auto", seen)
+        self.assertIn("Short messages", seen["short"](""))
+
+    def test_the_commands_are_in_help(self):
+        help_text = self.supervisor.help_text()
+        self.assertIn("/short", help_text)
+        self.assertIn("/auto", help_text)
 
 
 class FullCommandTests(unittest.TestCase):
