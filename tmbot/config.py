@@ -317,7 +317,7 @@ class ReportConfig:
     notify_on_level_invalidated: bool = True
     output_dir: str = "reports"
     charts: bool = True
-    chart_theme: str = "dark"        # light | dark
+    chart_theme: str = "tv"          # tv | dark | light
     chart_timeframe: str = "H1"
     chart_bars: int = 120
     # Lot-size line in every report: how many lots keep a stop-out to this
@@ -475,8 +475,8 @@ class Config:
             raise ConfigError(
                 f"report.daily_time must be HH:MM, got {self.report.daily_time!r}"
             ) from None
-        if self.report.chart_theme not in ("light", "dark"):
-            raise ConfigError("report.chart_theme must be 'light' or 'dark'")
+        if self.report.chart_theme not in ("tv", "light", "dark"):
+            raise ConfigError("report.chart_theme must be 'tv', 'dark' or 'light'")
         if self.language not in LANGUAGES:
             raise ConfigError(
                 f"language must be one of {', '.join(LANGUAGES)}, got {self.language!r}"

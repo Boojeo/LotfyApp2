@@ -6,7 +6,7 @@ import unittest
 from dataclasses import replace
 
 from tmbot.analysis import style as style_module
-from tmbot.analysis.report import ReportBuilder, render_text
+from tmbot.analysis.report import ReportBuilder, render_full
 from tmbot.broker.paper import PaperBroker
 from tmbot.config import AnalysisConfig, Config, ConfigError, EpicConfig, _coerce
 from tmbot.i18n import Translator
@@ -156,14 +156,14 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(restored.sizing, plan.sizing)
 
     def test_the_report_says_the_style_why_and_the_lot_size(self):
-        text = render_text(self.build(M15=UP, H1=FLAT))
+        text = render_full(self.build(M15=UP, H1=FLAT))
         self.assertIn("**Style:** Scalp", text)
         self.assertIn("Managed on M5", text)
         self.assertIn("**Ideal Size Suggested:**", text)
         self.assertIn("**Allowed Risk Limit (", text)
         self.assertIn("**Loss at Minimum Size (", text)
 
-        arabic = render_text(self.build(M15=UP, H1=FLAT), Translator("ar"))
+        arabic = render_full(self.build(M15=UP, H1=FLAT), Translator("ar"))
         self.assertIn("سكالبينج", arabic)
         self.assertIn("لوت", arabic)
 
@@ -182,7 +182,7 @@ class ReportTests(unittest.TestCase):
         raw.pop("sizing")
         old = TradePlan.from_dict(raw)
         self.assertEqual(old.management_timeframe, "")
-        self.assertNotIn("**Style:**", render_text(old))
+        self.assertNotIn("**Style:**", render_full(old))
 
 
 class ManagementTests(unittest.TestCase):

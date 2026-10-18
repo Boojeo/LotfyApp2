@@ -620,7 +620,8 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "/decline <id>      leave a detected position alone\n"
             "/manage <id>       take over a position declined earlier\n"
             "/report [epic]     rebuild and send the full plan\n"
-            "/plan [epic]       show the stored plan levels\n"
+            "/plan [epic]       show the stored plan, short\n"
+            "/full [epic]       the stored plan with every section\n"
             "/close <id>        close the remaining size now\n"
             "/be <id>           move the stop to entry now\n"
             "/journal [days]    win rate, R per instrument, target hit rates\n"
@@ -635,7 +636,8 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "‎/decline <id>‎      ترك المركز دون إدارة\n"
             "‎/manage <id>‎       إدارة مركز سبق رفضه\n"
             "‎/report [epic]‎     إعادة بناء الخطة وإرسالها\n"
-            "‎/plan [epic]‎       عرض مستويات الخطة المحفوظة\n"
+            "‎/plan [epic]‎       عرض الخطة المحفوظة باختصار\n"
+            "‎/full [epic]‎       الخطة المحفوظة بكل الأقسام\n"
             "‎/close <id>‎        إغلاق الكمية المتبقية الآن\n"
             "‎/be <id>‎           نقل الوقف إلى سعر الدخول الآن\n"
             "‎/journal [أيام]‎    نسبة الربح والأداء لكل أداة\n"
@@ -703,6 +705,13 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "chart.adx": {"en": "ADX {value} ({strength})", "ar": "ADX {value} {strength}"},
     "chart.rsi": {"en": "RSI {value}", "ar": "RSI {value}"},
     "chart.risk": {"en": "risk {value}", "ar": "المخاطرة {value}"},
+    "chart.tools": {"en": "Analysis tools", "ar": "أدوات التحليل"},
+    "chart.tool.fib": {"en": "Fibonacci", "ar": "فيبوناتشي"},
+    "chart.tool.gap": {"en": "Fair value gap", "ar": "فجوة القيمة العادلة"},
+    "chart.tool.camarilla": {"en": "Camarilla pivots", "ar": "محاور كاماريلا"},
+    "chart.tool.wolfe": {"en": "Wolfe wave", "ar": "موجة وولف"},
+    "chart.tool.static": {"en": "Static S/R zones", "ar": "دعم ومقاومة ثابتة"},
+    "chart.tool.dynamic": {"en": "dynamic S/R", "ar": "دعم ومقاومة متحركة"},
     "chart.unavailable": {
         "en": "Chart could not be drawn ({error}); the text plan above still applies.",
         "ar": "تعذّر رسم الشارت ({error})؛ الخطة النصية أعلاه سارية.",
@@ -847,6 +856,72 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "No stored plan for {epic}. Try /report {epic}.",
         "ar": "لا توجد خطة محفوظة لـ {epic}. جرّب ‎/report {epic}‎.",
     },
+    # Short Telegram message (render_text).
+    "sm.title": {"en": "📉 {tag}{symbol} — {deal}", "ar": "📉 {tag}{symbol} — {deal}"},
+    "term.deal.buy": {"en": "🟢 LONG (BUY)", "ar": "🟢 شراء (LONG)"},
+    "term.deal.sell": {"en": "🔴 SHORT (SELL)", "ar": "🔴 بيع (SHORT)"},
+    "term.act.buy": {"en": "Buy", "ar": "اشترِ"},
+    "term.act.sell": {"en": "Sell", "ar": "بِع"},
+    "sm.trend": {
+        "en": "{emoji} Trend {bias} {strength}/100", "ar": "{emoji} الاتجاه {bias} {strength}/100",
+    },
+    "sm.verdict": {"en": "{emoji} {verdict} — {reason}", "ar": "{emoji} {verdict} — {reason}"},
+    "sm.reversal": {
+        "en": "🔄 Reversal {emoji} {level} | Loss before TP1 ~{percent}%",
+        "ar": "🔄 الانعكاس {emoji} {level} | خسارة قبل الهدف الأول ~{percent}%",
+    },
+    "term.reversal.low": {"en": "Low", "ar": "منخفض"},
+    "term.reversal.medium": {"en": "Medium", "ar": "متوسط"},
+    "term.reversal.high": {"en": "High", "ar": "مرتفع"},
+    "sm.gap": {
+        "en": "🧭 Gap: {emoji} {kind} {gtype} {low}–{high} ({state})",
+        "ar": "🧭 الفجوة: {emoji} {gtype} {kind} {low}–{high} ({state})",
+    },
+    "sm.gap_none": {"en": "🧭 Gap: none", "ar": "🧭 الفجوة: لا يوجد"},
+    "sm.fib_wolfe": {
+        "en": "🧭 Fib: {fib} | Wolfe: {wolfe}", "ar": "🧭 فيبوناتشي: {fib} | وولف: {wolfe}",
+    },
+    "sm.fib": {"en": "{zone} {depth}%", "ar": "{zone} {depth}%"},
+    "sm.wolfe": {"en": "{kind}", "ar": "{kind}"},
+    "sm.none": {"en": "none", "ar": "لا يوجد"},
+    "term.fibzone.shallow": {"en": "shallow", "ar": "ضحل"},
+    "term.fibzone.moderate": {"en": "moderate", "ar": "طبيعي"},
+    "term.fibzone.deep": {"en": "deep", "ar": "عميق"},
+    "term.fibzone.golden": {"en": "golden pocket", "ar": "المنطقة الذهبية"},
+    "term.fibzone.very_deep": {"en": "very deep", "ar": "عميق جدًا"},
+    "term.fibzone.broken": {"en": "broken", "ar": "ملغاة"},
+    "term.fibzone.extension": {"en": "extension", "ar": "امتداد"},
+    "sm.sr": {
+        "en": "🧭 S/R: {support} ◀ price ▶ {resistance}{ema}",
+        "ar": "🧭 دعم/مقاومة: {support} ◀ السعر ▶ {resistance}{ema}",
+    },
+    "sm.camarilla": {
+        "en": "🧭 Camarilla: S3 {s3} · R3 {r3} ({zone})",
+        "ar": "🧭 كاماريلا: S3 {s3} · R3 {r3} ({zone})",
+    },
+    "term.camzone.range": {"en": "range", "ar": "نطاق"},
+    "term.camzone.above_r3": {"en": "above R3", "ar": "فوق R3"},
+    "term.camzone.above_r4": {"en": "above R4", "ar": "فوق R4"},
+    "term.camzone.below_s3": {"en": "below S3", "ar": "تحت S3"},
+    "term.camzone.below_s4": {"en": "below S4", "ar": "تحت S4"},
+    "sm.entry": {"en": "📊 Entry {entry} | SL {sl}", "ar": "📊 الدخول {entry} | الوقف {sl}"},
+    "sm.deal": {
+        "en": "⏱ Deal {n} → TP{k} {price} ({r}R) {hours}",
+        "ar": "⏱ الصفقة {n} ← الهدف {k} {price} ({r}R) {hours}",
+    },
+    "sm.target": {
+        "en": "🎯 TP{k} {price} ({r}R) {hours}", "ar": "🎯 الهدف {k} {price} ({r}R) {hours}",
+    },
+    "sm.hours": {"en": "~{n} h", "ar": "~{n} ساعة"},
+    "sm.hours_lt1": {"en": "<1 h", "ar": "أقل من ساعة"},
+    "sm.open": {
+        "en": "{side} {deals} x {lots} lots", "ar": "{side} {deals} × {lots} لوت",
+    },
+    "sm.risk": {
+        "en": "⚠️ Risk {percent}% = {money} {currency} | Decision: {decision}",
+        "ar": "⚠️ المخاطرة {percent}% = {money} {currency} | القرار: {decision}",
+    },
+    "sm.decision": {"en": "⚠️ Decision: {decision}", "ar": "⚠️ القرار: {decision}"},
     # Market map: gaps, Fibonacci, support/resistance families.
     "mm.heading": {
         "en": "### 🧭 **Market Map: Gaps, Fibonacci & Support/Resistance**",

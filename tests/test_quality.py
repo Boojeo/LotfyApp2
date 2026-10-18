@@ -84,10 +84,10 @@ class RiskVerdictTests(unittest.TestCase):
 
 class DisplayTests(unittest.TestCase):
     def test_the_report_shows_verdict_quality_and_alignment_separately(self):
-        from tmbot.analysis.report import ReportBuilder, render_text
+        from tmbot.analysis.report import ReportBuilder, render_full
         from tests.test_style import UP, auto_config, broker_with
         plan = ReportBuilder(broker_with(M15=UP, H1=UP), auto_config()).build("GOLD")
-        text = render_text(plan)
+        text = render_full(plan)
         self.assertIn("**Expected Trend:**", text)
         self.assertIn("Signal Strength:", text)
         self.assertNotIn("confidence", text)
@@ -102,11 +102,11 @@ class DisplayTests(unittest.TestCase):
         self.assertIn("**Immediate Loss Probability:**", text)
 
     def test_the_title_carries_the_environment_tag_once(self):
-        from tmbot.analysis.report import ReportBuilder, render_text
+        from tmbot.analysis.report import ReportBuilder, render_full
         from tests.test_style import UP, auto_config, broker_with
         from tmbot.notify.base import ConsoleNotifier
         plan = ReportBuilder(broker_with(M15=UP, H1=UP), auto_config()).build("GOLD")
-        text = render_text(plan, tag="[DEMO] ")
+        text = render_full(plan, tag="[DEMO] ")
         self.assertTrue(text.startswith("### 📉 **[DEMO] GOLD Trade Report**"))
         notifier = ConsoleNotifier()
         notifier.set_tag("[DEMO] ")

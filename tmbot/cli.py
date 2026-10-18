@@ -9,7 +9,7 @@ import sys
 from typing import List, Optional
 
 from . import config as config_module
-from .analysis.report import ReportBuilder, render_markdown, render_text
+from .analysis.report import ReportBuilder, render_full, render_markdown
 from .broker.capital import CapitalComBroker, explain
 from .broker.factory import build_broker
 from .config import Config
@@ -608,7 +608,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     failures += 1
                     continue
                 store.save_plan(plan)
-                print(render_markdown(plan) if args.markdown else render_text(plan))
+                print(render_markdown(plan) if args.markdown else render_full(plan))
                 print()
             return 1 if failures else 0
 

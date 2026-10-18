@@ -177,21 +177,21 @@ class DisplayTests(unittest.TestCase):
         return plan
 
     def test_every_reading_has_wording_in_both_languages(self):
-        from tmbot.analysis.report import render_text
+        from tmbot.analysis.report import render_full
         for zone in ("shallow", "moderate", "deep", "golden", "very_deep", "broken",
                      "extension"):
             for gap in ("breakaway", "continuation", "exhaustion", "common"):
                 for cam in ("range", "above_r3", "above_r4", "below_s3", "below_s4"):
                     plan = self.plan(self.market(zone, gap, cam))
                     for language in ("en", "ar"):
-                        text = render_text(plan, Translator(language))
+                        text = render_full(plan, Translator(language))
                         self.assertNotIn("[mm.", text)
                         self.assertNotIn("[term.", text)
                         self.assertIn("🧭", text)
 
     def test_the_section_names_every_family_the_plan_was_asked_for(self):
-        from tmbot.analysis.report import render_text
-        text = render_text(self.plan(self.market()))
+        from tmbot.analysis.report import render_full
+        text = render_full(self.plan(self.market()))
         for label in ("Fair Value Gap", "breakaway", "Fibonacci (up leg",
                       "golden pocket", "Fibonacci Support/Resistance",
                       "Static Support/Resistance", "Dynamic (Moving)",
@@ -205,8 +205,8 @@ class DisplayTests(unittest.TestCase):
         raw.pop("market")
         old = TradePlan.from_dict(raw)
         self.assertEqual(old.market, {})
-        from tmbot.analysis.report import render_text
-        self.assertNotIn("Market Map", render_text(old))
+        from tmbot.analysis.report import render_full
+        self.assertNotIn("Market Map", render_full(old))
 
     def test_the_gap_terms_exist_in_the_catalogue(self):
         for key in ("mm.heading", "mm.wolfe_none", "mm.gap_none", "mm.fib.extension"):
