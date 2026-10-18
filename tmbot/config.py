@@ -315,6 +315,9 @@ class ReportConfig:
     intraday_refresh_hours: float = 4.0
     notify_on_bias_flip: bool = True
     notify_on_level_invalidated: bool = True
+    # Send the long report instead of the short one when the analysis is
+    # unsure or the risk is big (see analysis.report.detail_reasons).
+    auto_full_report: bool = True
     output_dir: str = "reports"
     charts: bool = True
     chart_theme: str = "tv"          # tv | dark | light

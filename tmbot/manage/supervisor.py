@@ -26,6 +26,7 @@ from ..analysis.report import (
     ReportBuilder,
     render_full,
     render_markdown,
+    render_message,
     render_text,
     report_sections,
 )
@@ -1081,7 +1082,10 @@ class Supervisor:
     def _publish_plan(self, plan: TradePlan, *, notify: bool = True) -> str:
         """Write the markdown, draw the chart, and push both out."""
         self._write_report_file(plan)
-        caption = render_text(plan, self.t, tag=self._env_tag())
+        caption = render_message(
+            plan, self.t, tag=self._env_tag(),
+            auto_full=self.config.report.auto_full_report,
+        )
         if not notify:
             return caption
         path = self._render_chart(plan)

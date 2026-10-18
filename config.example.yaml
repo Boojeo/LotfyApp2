@@ -175,6 +175,9 @@ report:
   intraday_refresh_hours: 4.0
   notify_on_bias_flip: true
   notify_on_level_invalidated: true
+  # Short Telegram message normally; the long report instead when the signal
+  # is weak, the timeframes disagree, a reversal is likely, or the risk is big.
+  auto_full_report: true
   output_dir: reports
 
   # Annotated chart images sent with every report. Candles are drawn in plain

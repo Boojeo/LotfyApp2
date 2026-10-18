@@ -856,6 +856,36 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "No stored plan for {epic}. Try /report {epic}.",
         "ar": "لا توجد خطة محفوظة لـ {epic}. جرّب ‎/report {epic}‎.",
     },
+    # Why a message was sent in full.
+    "detail.notice": {
+        "en": "ℹ️ **Full report because:** {reasons}",
+        "ar": "ℹ️ **تقرير كامل لأن:** {reasons}",
+    },
+    "detail.neutral": {"en": "there is no clear direction", "ar": "لا يوجد اتجاه واضح"},
+    "detail.low_signal": {
+        "en": "the signal is weak ({strength}/100)", "ar": "الإشارة ضعيفة ({strength}/100)",
+    },
+    "detail.conflict": {
+        "en": "the {timeframe} chart disagrees", "ar": "الإطار {timeframe} يخالف الاتجاه",
+    },
+    "detail.no_higher": {
+        "en": "the higher timeframe could not be read",
+        "ar": "تعذّرت قراءة الإطار الزمني الأعلى",
+    },
+    "detail.reversal": {
+        "en": "a reversal against the trade is likely",
+        "ar": "انعكاس ضد الصفقة محتمل",
+    },
+    "detail.loss": {
+        "en": "about {percent}% chance of hitting the stop before TP1",
+        "ar": "حوالي {percent}% احتمال ضرب الوقف قبل الهدف الأول",
+    },
+    "detail.risk_rejected": {
+        "en": "the risk limit cannot be met", "ar": "لا يمكن الالتزام بحد المخاطرة",
+    },
+    "detail.risk_unchecked": {
+        "en": "the risk could not be checked", "ar": "تعذّر التحقق من المخاطرة",
+    },
     # Short Telegram message (render_text).
     "sm.title": {"en": "📉 {tag}{symbol} — {deal}", "ar": "📉 {tag}{symbol} — {deal}"},
     "term.deal.buy": {"en": "🟢 LONG (BUY)", "ar": "🟢 شراء (LONG)"},

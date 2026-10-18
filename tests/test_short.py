@@ -6,7 +6,8 @@ import unittest
 from dataclasses import replace
 
 from tmbot.analysis import report
-from tmbot.analysis.report import ReportBuilder, deal_hours, render_full, render_text
+from tmbot.analysis.report import (
+    ReportBuilder, deal_hours, detail_reasons, render_full, render_message, render_text)
 from tmbot.i18n import Translator
 from tests.helpers import candles
 from tests.test_style import DOWN, UP, GOLD, auto_config, broker_with
@@ -111,6 +112,96 @@ class HoursTests(unittest.TestCase):
         t = Translator()
         self.assertEqual(report._hours_text(0.4, t), "<1 h")
         self.assertEqual(report._hours_text(2.6, t), "~3 h")
+
+
+def healthy(shape=UP):
+    """A clear, aligned, low-risk plan: the case the short message is for."""
+    plan = allowed(plan_for(shape))
+    plan.confidence = 70.0
+    plan.technical = {**plan.technical, "adx": 40}
+    plan.assessment = {**plan.assessment, "alignment": "ALIGNED", "flags": [],
+                       "higher_timeframe": "H4"}
+    plan.sizing = {**plan.sizing, "verdict": "OK"}
+    return plan
+
+
+class AutoFullTests(unittest.TestCase):
+    def test_a_clear_low_risk_plan_stays_short(self):
+        plan = healthy()
+        self.assertEqual(detail_reasons(plan, Translator()), [])
+        message = render_message(plan, tag="[DEMO] ")
+        self.assertEqual(message, render_text(plan, tag="[DEMO] "))
+        self.assertNotIn("Full report because", message)
+
+    def trigger(self, mutate, expected):
+        plan = healthy()
+        mutate(plan)
+        message = render_message(plan, tag="[DEMO] ")
+        self.assertIn("Full report because:", message)
+        self.assertIn(expected, message.split("\n")[2])
+        self.assertIn("Reversal Analysis", message)
+        self.assertEqual(message.splitlines()[0], "### 📉 **[DEMO] GOLD Trade Report**")
+
+    def test_a_weak_signal_sends_the_full_report(self):
+        self.trigger(lambda p: setattr(p, "confidence", 25.0), "the signal is weak (25/100)")
+
+    def test_no_direction_sends_the_full_report(self):
+        from tmbot.models import Bias
+        self.trigger(lambda p: setattr(p, "bias", Bias.NEUTRAL), "no clear direction")
+
+    def test_a_disagreeing_higher_timeframe_sends_the_full_report(self):
+        self.trigger(lambda p: setattr(p, "assessment", {**p.assessment, "alignment": "CONFLICT"}),
+                     "the H4 chart disagrees")
+
+    def test_an_unreadable_higher_timeframe_sends_the_full_report(self):
+        self.trigger(lambda p: setattr(p, "assessment", {**p.assessment, "alignment": "UNCERTAIN"}),
+                     "higher timeframe could not be read")
+
+    def test_a_likely_reversal_sends_the_full_report(self):
+        flags = [{"key": "timeframe_conflict", "severity": "major", "args": {"timeframe": "H4", "bias": "BEARISH"}},
+                 {"key": "against_bias", "severity": "major", "args": {"bias": "BEARISH"}}]
+        self.trigger(lambda p: setattr(p, "assessment", {**p.assessment, "flags": flags}),
+                     "a reversal against the trade is likely")
+
+    def test_a_likely_stop_out_sends_the_full_report(self):
+        def narrow_target(plan):
+            plan.tp1 = plan.reference_price + (plan.reference_price - plan.sl) * 0.2
+            if plan.direction.value == "SELL":
+                plan.tp1 = plan.reference_price - (plan.sl - plan.reference_price) * 0.2
+        self.trigger(narrow_target, "chance of hitting the stop before TP1")
+
+    def test_a_risk_limit_that_cannot_be_met_sends_the_full_report(self):
+        self.trigger(lambda p: setattr(p, "sizing", {**p.sizing, "verdict": "REJECTED"}),
+                     "the risk limit cannot be met")
+
+    def test_an_unchecked_risk_sends_the_full_report(self):
+        self.trigger(lambda p: setattr(p, "sizing", {"verdict": "UNCHECKED"}),
+                     "the risk could not be checked")
+
+    def test_several_reasons_are_listed_together(self):
+        plan = healthy()
+        plan.confidence = 20.0
+        plan.sizing = {**plan.sizing, "verdict": "REJECTED"}
+        line = render_message(plan).split("\n")[2]
+        self.assertIn("the signal is weak", line)
+        self.assertIn("the risk limit cannot be met", line)
+
+    def test_a_merely_rejected_entry_stays_short(self):
+        plan = healthy()
+        plan.assessment = {**plan.assessment, "verdict": "REJECTED"}
+        self.assertEqual(render_message(plan), render_text(plan))
+
+    def test_the_switch_turns_it_off(self):
+        plan = healthy()
+        plan.confidence = 10.0
+        self.assertEqual(render_message(plan, auto_full=False), render_text(plan))
+
+    def test_arabic_gives_the_reason_too(self):
+        plan = healthy()
+        plan.confidence = 10.0
+        text = render_message(plan, Translator("ar"))
+        self.assertIn("تقرير كامل لأن", text)
+        self.assertNotIn("[detail.", text)
 
 
 class FullCommandTests(unittest.TestCase):
