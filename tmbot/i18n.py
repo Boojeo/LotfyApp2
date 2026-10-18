@@ -612,6 +612,18 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "[{id}] {direction} {size} @ {entry}: {move} ({r}R) {money} | SL {sl}",
         "ar": "[{id}] {direction} {size} @ {entry}: {move} ({r}R) {money} | الوقف {sl}",
     },
+    "command.short_on": {
+        "en": "Short messages from now on, even when unsure or the risk is big. "
+              "/full [symbol] still shows the long report. /auto goes back to automatic.",
+        "ar": "رسائل مختصرة من الآن، حتى عند عدم اليقين أو ارتفاع الخطر. "
+              "‎/full [الرمز]‎ ما زال يعرض التقرير الكامل. ‎/auto‎ يعيد الوضع التلقائي.",
+    },
+    "command.auto_on": {
+        "en": "Automatic: short messages, and the long report only when the analysis is "
+              "unsure or the risk is big. /short turns the long report off.",
+        "ar": "تلقائي: رسائل مختصرة، والتقرير الكامل فقط عند عدم اليقين أو ارتفاع الخطر. "
+              "‎/short‎ يوقف التقرير الكامل.",
+    },
     "command.help": {
         "en": (
             "/now [symbol]      full analysis on live prices, right now\n"
@@ -622,6 +634,8 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "/report [epic]     rebuild and send the full plan\n"
             "/plan [epic]       show the stored plan, short\n"
             "/full [epic]       the stored plan with every section\n"
+            "/short             always send the short message\n"
+            "/auto              long only when unsure or risky (default)\n"
             "/close <id>        close the remaining size now\n"
             "/be <id>           move the stop to entry now\n"
             "/journal [days]    win rate, R per instrument, target hit rates\n"
@@ -638,6 +652,8 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "‎/report [epic]‎     إعادة بناء الخطة وإرسالها\n"
             "‎/plan [epic]‎       عرض الخطة المحفوظة باختصار\n"
             "‎/full [epic]‎       الخطة المحفوظة بكل الأقسام\n"
+            "‎/short‎             إرسال الرسالة المختصرة دائمًا\n"
+            "‎/auto‎              الكاملة فقط عند عدم اليقين أو الخطر (الافتراضي)\n"
             "‎/close <id>‎        إغلاق الكمية المتبقية الآن\n"
             "‎/be <id>‎           نقل الوقف إلى سعر الدخول الآن\n"
             "‎/journal [أيام]‎    نسبة الربح والأداء لكل أداة\n"
