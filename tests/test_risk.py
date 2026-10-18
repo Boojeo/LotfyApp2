@@ -99,7 +99,7 @@ class MinimumLotTests(unittest.TestCase):
 
 class ReportVerdictTests(unittest.TestCase):
     def test_a_strong_signal_cannot_override_the_risk_limit(self):
-        from tmbot.analysis.report import render_text
+        from tmbot.analysis.report import render_full
         from tests.test_style import broker_with, auto_config, UP
         from tmbot.analysis.report import ReportBuilder
         broker = broker_with(M15=UP, H1=UP)
@@ -107,7 +107,7 @@ class ReportVerdictTests(unittest.TestCase):
         broker.account_summary = lambda: {"currency": "USD", "equity": 50.0}
         plan = ReportBuilder(broker, auto_config()).build("GOLD")
         self.assertEqual(plan.sizing["verdict"], "REJECTED")
-        text = render_text(plan)
+        text = render_full(plan)
         self.assertIn("**REJECTED** — the risk limit cannot be met", text)
         self.assertIn("which exceeds your limit", text)
         self.assertIn("**Final Decision:** Skip this trade", text)

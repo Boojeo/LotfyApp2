@@ -24,6 +24,7 @@ from ..analysis import risk as risk_module
 from ..analysis import style as style_module
 from ..analysis.report import (
     ReportBuilder,
+    render_full,
     render_markdown,
     render_text,
     report_sections,
@@ -1195,6 +1196,7 @@ class Supervisor:
         self.notifier.register("manage", self.manage_existing)
         self.notifier.register("report", self.report_command)
         self.notifier.register("plan", self.plan_command)
+        self.notifier.register("full", self.full_command)
         self.notifier.register("now", self.now_command)
         self.notifier.register("live", self.now_command)
         self.notifier.register("close", self.close_command)
@@ -1293,6 +1295,22 @@ class Supervisor:
             return self.t("command.plan_usage")
         plan = self.store.latest_plan(epic)
         return render_text(plan, self.t, tag=self._env_tag()) if plan else self.t("report.no_plan", epic=epic)
+
+    def full_command(self, argument: str) -> str:
+        """The stored plan with every section -- the long form of /plan."""
+        epics = [self.config.canonical_epic(argument)] if argument.strip() else [
+            item.epic for item in self.config.analysis.watchlist
+        ]
+        if not epics:
+            return self.t("command.no_epic")
+        replies = []
+        for epic in epics:
+            plan = self.store.latest_plan(epic)
+            replies.append(
+                render_full(plan, self.t, tag=self._env_tag()) if plan
+                else self.t("report.no_plan", epic=epic)
+            )
+        return "\n\n".join(replies)
 
     def close_command(self, argument: str) -> str:
         trade = self.store.trade_by_short_id(argument.strip())

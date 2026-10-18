@@ -35,7 +35,7 @@ class RenderTests(unittest.TestCase):
 
     def test_both_themes_and_languages_produce_a_real_image(self):
         with TemporaryDirectory() as directory:
-            for theme in ("light", "dark"):
+            for theme in ("light", "dark", "tv"):
                 for language in ("en", "ar"):
                     path = Path(directory) / f"{theme}-{language}.png"
                     result = chart.render(self.plan, self.bars, path,

@@ -11,6 +11,7 @@ from ..broker.base import BrokerAdapter
 from ..config import Config
 from ..i18n import Translator
 from ..models import Bias, Direction, TradePlan, utcnow
+from ..util.timeframes import seconds as timeframe_seconds
 from . import bias as bias_module
 from . import fundamental as fundamental_module
 from . import news as news_module
@@ -488,8 +489,8 @@ def report_sections(plan: TradePlan, t: Translator) -> List[str]:
     return lines
 
 
-def render_text(plan: TradePlan, t: Optional[Translator] = None, tag: str = "") -> str:
-    """Structured chat notification: verdict, reversal risk, levels, capital.
+def render_full(plan: TradePlan, t: Optional[Translator] = None, tag: str = "") -> str:
+    """The long report: every section, for /full, /now and the report file.
 
     ``tag`` is the environment marker (e.g. ``[DEMO] ``) so it lands inside the
     title; notifiers skip their own prefix when the message already has it.
@@ -497,3 +498,139 @@ def render_text(plan: TradePlan, t: Optional[Translator] = None, tag: str = "") 
     t = t or Translator()
     return "\n".join([t("tr.title", emoji="📉", tag=tag, symbol=plan.epic), "",
                       *report_sections(plan, t)])
+
+
+# ------------------------------------------------------------------ short message
+
+DEAL_TARGETS = {3: (1, 2, 3), 2: (1, 3), 1: (1,)}   # which target each deal closes at
+SHORT_FLAGS = 3                                     # reasons shown in the short form
+
+
+def deal_hours(plan: TradePlan) -> Optional[List[float]]:
+    """Rough hours until each target (TP1..TP3), or None when unknown.
+
+    Distance in ATRs becomes candles of the levels chart: a steady trend (high
+    ADX) covers ground about linearly, a wandering market takes roughly the
+    square of the distance.  An estimate for planning, not a forecast.
+    """
+    entry = (plan.style or {}).get("entry")
+    if not entry or plan.atr <= 0:
+        return None
+    try:
+        hours_per_bar = timeframe_seconds(entry) / 3600.0
+    except Exception:
+        return None
+    adx = plan.technical.get("adx")
+    trend = min(float(adx), 40.0) / 40.0 if isinstance(adx, (int, float)) else 0.5
+    exponent = 2.0 - trend
+    return [
+        (abs(price - plan.reference_price) / plan.atr) ** exponent * hours_per_bar
+        for price in plan.targets
+    ]
+
+
+def _hours_text(hours: float, t: Translator) -> str:
+    return t("sm.hours_lt1") if hours < 1 else t("sm.hours", n=round(hours))
+
+
+def _decision(plan: TradePlan, t: Translator) -> tuple:
+    """(text, allowed) -- what to do with this trade, in one line."""
+    sizing = plan.sizing or {}
+    if not sizing or sizing.get("verdict") == "UNCHECKED":
+        return t("tr.action_manual"), False
+    skip = (sizing.get("verdict") == "REJECTED" or not sizing.get("legs")
+            or (plan.assessment or {}).get("verdict") == "REJECTED")
+    if skip:
+        return t("tr.action_skip"), False
+    side = t.term("act", plan.direction.value)
+    return t("sm.open", side=side, deals=sizing["legs"], lots=sizing["per_leg"]), True
+
+
+def _map_lines(plan: TradePlan, t: Translator) -> List[str]:
+    found = plan.market
+    if not found:
+        return []
+    digits = max(_digits(plan.reference_price), 2)
+    fmt = lambda value: f"{value:.{digits}f}"  # noqa: E731
+    lines: List[str] = []
+    gaps = found.get("gaps") or []
+    if gaps:
+        gap = gaps[0]
+        lines.append(t("sm.gap", emoji="🟢" if gap["kind"] == "bullish" else "🔴",
+                       kind=t.term("gapkind", gap["kind"]), gtype=t.term("gaptype", gap["type"]),
+                       low=fmt(gap["low"]), high=fmt(gap["high"]),
+                       state=t.term("gapstate", gap["state"])))
+    else:
+        lines.append(t("sm.gap_none"))
+    fib = found.get("fibonacci")
+    wolfe = found.get("wolfe")
+    lines.append(t(
+        "sm.fib_wolfe",
+        fib=(t("sm.fib", zone=t.term("fibzone", fib["zone"]),
+               depth=f"{max(fib['depth'], 0) * 100:.0f}") if fib else t("sm.none")),
+        wolfe=(t("sm.wolfe", kind=t.term("gapkind", wolfe["direction"]))
+               if wolfe else t("sm.none")),
+    ))
+    static = found.get("static") or {}
+    support, resistance = static.get("support"), static.get("resistance")
+    dynamic = found.get("dynamic") or []
+    ema = next((d for d in dynamic if d["name"] == "EMA20"), None)
+    lines.append(t(
+        "sm.sr", support=fmt(support["price"]) if support else "-",
+        resistance=fmt(resistance["price"]) if resistance else "-",
+        ema=(" | " + f"EMA20 {fmt(ema['price'])}") if ema else "",
+    ))
+    cam = found.get("camarilla")
+    if cam:
+        lines.append(t("sm.camarilla", s3=fmt(cam["s3"]), r3=fmt(cam["r3"]),
+                       zone=t.term("camzone", cam["zone"])))
+    return lines
+
+
+def render_text(plan: TradePlan, t: Optional[Translator] = None, tag: str = "") -> str:
+    """The short Telegram message: side, verdict, risk of reversal, map, levels, decision."""
+    t = t or Translator()
+    found = plan.assessment or {}
+    verdict = found.get("verdict", "")
+    level = reversal_level(plan)
+    chance = loss_probability(plan)
+    lines = [
+        t("sm.title", tag=tag, symbol=plan.epic, deal=t.term("deal", plan.direction.value)),
+        t("sm.trend", emoji=_TREND_EMOJI.get(plan.bias.value, "➖"),
+          bias=t.bias_name(plan.bias, arrow=False), strength=f"{plan.confidence:.0f}")
+        + (t("report.advisory_tag") if plan.advisory_only else ""),
+    ]
+    if verdict:
+        lines.append(t("sm.verdict", emoji=_VERDICT_EMOJI.get(verdict, "⚠️"),
+                       verdict=t.term("verdict", verdict),
+                       reason=t(found.get("verdict_key") or "verdict.weak_entry")))
+        reasons = [t(f"quality.flag.{flag['key']}", **flag.get("args", {}))
+                   for flag in found.get("flags", [])[:SHORT_FLAGS]]
+        if reasons:
+            lines.append("↳ " + t.semicolon.join(reasons))
+    lines.append(t("sm.reversal", emoji=_REVERSAL_EMOJI[level], level=t.term("reversal", level),
+                   percent=f"{round(chance * 100 / 5) * 5:.0f}"))
+    lines += _map_lines(plan, t)
+    lines.append(t("sm.entry", entry=plan.reference_price, sl=plan.sl))
+
+    decision, allowed = _decision(plan, t)
+    hours = deal_hours(plan)
+    legs = (plan.sizing or {}).get("legs")
+    mapping = DEAL_TARGETS.get(legs) if allowed else None
+    shown = mapping or (1, 2, 3)
+    for deal_number, target in enumerate(shown, start=1):
+        price = plan.targets[target - 1]
+        line = dict(k=target, price=price, r=f"{plan.reward_risk(price):.1f}",
+                    hours=_hours_text(hours[target - 1], t) if hours else "-")
+        if mapping:
+            lines.append(t("sm.deal", n=deal_number, **line))
+        else:
+            lines.append(t("sm.target", **line))
+    sizing = plan.sizing or {}
+    if sizing and sizing.get("verdict") != "UNCHECKED":
+        lines.append(t("sm.risk", percent=f"{sizing.get('risk_percent', 0):g}",
+                       money=f"{sizing.get('max_money', 0):,.0f}",
+                       currency=sizing.get("currency", ""), decision=decision))
+    else:
+        lines.append(t("sm.decision", decision=decision))
+    return "\n".join(lines)
