@@ -615,7 +615,8 @@ def render_text(plan: TradePlan, t: Optional[Translator] = None, tag: str = "") 
     lines.append(t("sm.reversal", emoji=_REVERSAL_EMOJI[level], level=t.term("reversal", level),
                    percent=f"{round(chance * 100 / 5) * 5:.0f}"))
     lines += _map_lines(plan, t)
-    lines.append(t("sm.entry", entry=plan.reference_price, sl=plan.sl))
+    lines.append(t("sm.entry", entry=plan.reference_price, sl=plan.sl,
+                   distance=f"{plan.risk:.{max(_digits(plan.reference_price), 2)}f}"))
 
     decision, allowed = _decision(plan, t)
     hours = deal_hours(plan)
@@ -633,7 +634,8 @@ def render_text(plan: TradePlan, t: Optional[Translator] = None, tag: str = "") 
     sizing = plan.sizing or {}
     if sizing and sizing.get("verdict") != "UNCHECKED":
         lines.append(t("sm.risk", percent=f"{sizing.get('risk_percent', 0):g}",
-                       money=f"{sizing.get('max_money', 0):,.0f}",
+                       money=f"{sizing.get('max_money', 0):,.2f}",
+                       est=f"{sizing.get('total_money', 0):,.2f}",
                        currency=sizing.get("currency", ""), decision=decision))
     else:
         lines.append(t("sm.decision", decision=decision))

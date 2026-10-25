@@ -144,6 +144,15 @@ class FakeMT5:
             if code not in (10009, 10008, 10010, 10025):
                 return SimpleNamespace(retcode=code, comment="refused", order=0, deal=0,
                                        request_id=1)
+        if request["action"] == 1 and "position" not in request:
+            self._next_deal += 1
+            self.open[self._next_deal] = SimpleNamespace(
+                ticket=self._next_deal, symbol=request["symbol"], type=request["type"],
+                volume=request["volume"], price_open=request["price"], sl=request["sl"],
+                tp=request["tp"], profit=0.0, time=OPENED, time_msc=OPENED * 1000,
+            )
+            return SimpleNamespace(retcode=10009, comment="done", order=self._next_deal,
+                                   deal=self._next_deal, request_id=9)
         held = self.open.get(request.get("position"))
         if request["action"] == 6:
             held.sl, held.tp = request["sl"], request["tp"]
@@ -402,9 +411,49 @@ class PositionTests(unittest.TestCase):
         with self.assertRaises(RetryableError):
             broker.modify_position("101", stop_level=3400.0)
 
-    def test_the_bot_cannot_open_a_position(self):
-        with self.assertRaises(NotSupportedError):
-            connected()[0].open_position("XAUUSDm", Direction.BUY, 0.01)
+    def test_a_market_order_carries_its_stop_target_and_side(self):
+        broker, fake = connected()
+        reference = broker.open_position("XAUUSDm", Direction.SELL, 0.03,
+                                         stop_level=3420.0, profit_level=3400.0)
+        request = fake.requests[-1]
+        self.assertEqual((request["action"], request["type"]), (1, 1))     # DEAL, SELL
+        self.assertNotIn("position", request)
+        self.assertEqual((request["sl"], request["tp"], request["volume"]), (3420.0, 3400.0, 0.03))
+        self.assertEqual(request["price"], 3410.0)                          # sells at the bid
+        self.assertEqual(request["comment"], "tmbot auto")
+        self.assertTrue(reference)
+
+    def test_a_buy_is_sent_at_the_ask_and_a_missing_stop_is_zero(self):
+        broker, fake = connected()
+        broker.open_position("XAUUSDm", Direction.BUY, 0.01)
+        request = fake.requests[-1]
+        self.assertEqual((request["type"], request["price"], request["sl"]), (0, 3410.2, 0.0))
+
+    def test_a_refused_order_is_raised_not_retried_blindly(self):
+        broker, fake = connected()
+        fake.replies = [10016]                     # invalid stops
+        with self.assertRaises(PermanentError):
+            broker.open_position("XAUUSDm", Direction.BUY, 0.01, stop_level=3410.1)
+        self.assertEqual(len(fake.requests), 1, "an invalid-stops refusal must not be resent")
+
+    def test_a_requote_is_retried_because_the_order_did_not_execute(self):
+        broker, fake = connected()
+        fake.replies = [10004, 10009]
+        broker.open_position("XAUUSDm", Direction.BUY, 0.01)
+        self.assertEqual(len(fake.requests), 2)
+
+    def test_a_closed_market_is_retryable_and_not_resent(self):
+        broker, fake = connected()
+        fake.replies = [10018]
+        with self.assertRaises(RetryableError):
+            broker.open_position("XAUUSDm", Direction.BUY, 0.01)
+        self.assertEqual(len(fake.requests), 1)
+
+    def test_a_non_positive_size_is_refused_before_anything_is_sent(self):
+        broker, fake = connected()
+        with self.assertRaises(PermanentError):
+            broker.open_position("XAUUSDm", Direction.BUY, 0.0)
+        self.assertEqual(fake.requests, [])
 
     def test_the_real_closing_price_is_read_from_history(self):
         broker, fake = connected()

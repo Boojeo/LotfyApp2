@@ -178,6 +178,8 @@ def size_for_plan(
         rules=rules,
         legs_planned=planned_legs(config),
         spread=spread,
+        commission_per_lot=config.report.commission_per_lot,
+        slippage=config.report.slippage,
     )
     if assessment is None:
         return {"verdict": "UNCHECKED", "reason": "no equity reported"}

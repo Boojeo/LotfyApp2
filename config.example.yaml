@@ -194,4 +194,28 @@ report:
   # minimum lot makes 3 deals too big, fewer deals are advised; when even 1
   # deal at the minimum is too big, the verdict is REJECTED -- RISK LIMIT.
   # 0 turns the check off. Needs MetaTrader 5 (it publishes contract values).
+  # Send /risk 1, /risk 2 or /risk 3 in Telegram to choose 1%, 2% or 3%; the
+  # choice is remembered. 1% is the default, 2% and 3% are higher-risk
+  # settings that are only ever applied because you chose them.
   risk_percent: 1.0
+  # Trading costs counted in the lot size (a stop-out costs more, so the lots
+  # shrink; the risk limit never grows). Both default to 0.
+  commission_per_lot: 0.0        # round-turn commission for 1.0 lot, account currency
+  slippage: 0.0                  # price distance added to the stop, like half the spread
+
+# AUTOMATIC TRADING. Everything below is OFF until you turn it on yourself.
+# The bot otherwise never opens a position. Read "Automatic trading" in the
+# README before changing `enabled`. Try it on the DEMO account first.
+auto:
+  enabled: false                 # master switch; /auto_on refuses while this is false
+  allow_live: false              # second switch, needed for a real-money account
+  instruments: []                # empty = the watchlist
+  session_start: "07:00"         # UTC; no new entries before this ...
+  session_end: "20:00"           # ... or after this
+  weekdays: [0, 1, 2, 3, 4]      # Monday = 0
+  max_open_positions: 3          # deals open at once, all instruments (3 = one basket)
+  daily_loss_limit_percent: 3.0  # of the day's starting equity; no new entries once reached
+  min_signal_strength: 60        # out of 100
+  scan_minutes: 5                # between scans; each scan looks at one instrument
+  cooldown_hours: 4              # the same instrument and side is not re-entered sooner
+  confirm_seconds: 120           # how long a live /auto_on or /panic code lasts

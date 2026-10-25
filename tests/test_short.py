@@ -251,7 +251,10 @@ class ModeCommandTests(unittest.TestCase):
     def test_the_commands_are_in_help(self):
         help_text = self.supervisor.help_text()
         self.assertIn("/short", help_text)
-        self.assertIn("/auto", help_text)
+        self.assertIn("/msg_auto", help_text)
+        for command in ("/auto_on", "/auto_off", "/auto_status", "/risk", "/daily_report",
+                        "/plan_status", "/panic"):
+            self.assertIn(command, help_text)
 
 
 class FullCommandTests(unittest.TestCase):

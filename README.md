@@ -2,7 +2,8 @@
 
 You take the entry. The bot takes everything after it.
 
-It never opens a position. It watches your Capital.com or MetaTrader 5 (Exness)
+By default it never opens a position (see "Automatic trading" for the optional,
+off-by-default mode that does). It watches your Capital.com or MetaTrader 5 (Exness)
 account, notices when you
 have manually entered a trade, asks you to confirm, and then runs the exit plan:
 scaled partial closes, an automatic move to break-even, and a trailing stop that
@@ -95,6 +96,121 @@ outstanding — a lone deal in this mode closes at TP1 and stops there.
 | Trend weak | Hold the stop where it is |
 
 ---
+
+## Automatic trading and the 30-day plan
+
+Both are optional. Neither changes how the bot manages a trade you opened.
+
+### Automatic trading (off by default)
+
+Automatic trading lets the bot open the trades its own analysis approves, with
+the stop and target attached at the broker. It is **off** until you switch it on
+in three places:
+
+1. `auto.enabled: true` in `config.yaml` (it also needs your Telegram token and
+   chat id, because it is only ever controlled from your own chat), then restart.
+2. `/auto_on` in Telegram.
+3. On a **real-money account** only: `auto.allow_live: true` as well, and then a
+   one-time code that `/auto_on` sends you and you type back
+   (`/auto_on 4821`) within `auto.confirm_seconds`. A live account always starts
+   a session OFF; it never resumes by itself after a restart.
+
+Start on the demo account. The bot refuses to turn on if the risk per trade is
+not 1, 2 or 3 %, if MetaTrader 5's Algo Trading button is off, or if the account
+nets positions (three separate deals need hedging).
+
+**Commands** (only your configured Telegram chat can send them)
+
+| Command | What it does |
+| --- | --- |
+| `/auto_on` | Turn automatic entries on (live: asks for the code). |
+| `/auto_off` | Stop new entries immediately. |
+| `/auto_status` | ON or OFF, risk, instruments, session, open deals, loss-limit use, latest decisions. |
+| `/risk [1\|2\|3]` | Show or set the risk per trade, as % of equity. Remembered. |
+| `/daily_report` | Today's equity, results, risk and the automatic mode's counts. |
+| `/plan_status` | The 30-day plan's status (same as `/plan30`). |
+| `/panic` | Turn automatic trading OFF **and close every managed trade**; asks for a code first. |
+| `/msg_auto`, `/short` | Message length only (this used to be `/auto`). `/auto` now just points you here. |
+
+**What happens when it is turned OFF.** New entries stop at once. Positions that
+are already open are *not* closed: the normal engine keeps managing them (stops,
+targets, trailing, break-even, reversal alerts), and you can still `/close <id>`.
+The only thing that closes everything is `/panic`, after a confirmation. The same
+applies when the daily loss limit is reached: new entries stop, management
+continues.
+
+**What it checks, in this order, for one instrument every `auto.scan_minutes`:**
+
+1. instrument permitted (`auto.instruments`, else the watchlist)
+2. no unsettled earlier order; trading session (`session_start`–`session_end`
+   UTC, on `weekdays`)
+3. daily loss limit not reached (`daily_loss_limit_percent` of the day's starting
+   equity; equity is read from the account, so deposits and withdrawals during
+   the day distort it)
+4. no open position on the instrument; open deals below `max_open_positions`
+5. the full analysis (technicals, news, entry quality, risk sizing)
+6. verdict **APPROVED**; signal strength at least `min_signal_strength`; higher
+   timeframe **ALIGNED**; a clear direction; none of the "unsure or risky"
+   reasons that also trigger the long report; risk sized inside the selected
+   limit for the selected risk %
+7. market tradeable; not in the cool-down for that instrument and side
+
+Anything else is rejected, logged with its reason (`auto_reject` events, shown in
+`/auto_status`) and, only when a good signal was stopped by a guard, messaged
+once an hour. Every order request, acceptance, failure and state change is also
+logged (`auto_order`, `auto_open`, `auto_error`, `auto_state`).
+
+**Order safety.** The stop is the plan's technical stop; it is never widened to
+fit a lot size, and the risk % is never raised to make a trade pass. If even the
+broker's smallest lot loses more than the limit, the trade is skipped and the
+reason says so. Duplicate protection writes its markers *before* an order is
+sent, so a crash or a timeout can only block a repeat: after a failure the bot
+does not retry, it reads the account to see what really opened, and the trades
+that did open are managed normally. A basket that fails part-way keeps the deals
+that opened and stops there. With `dry_run: true` nothing is sent.
+
+**Limits worth knowing.** On MetaTrader 5 the order function is new and has been
+tested against a stand-in for the MetaTrader5 package, not a live terminal: run
+it on a demo account and watch the first trades. Entries are market orders at
+the quoted price, so the fill can differ; the stop and target are attached to the
+order. Position sizing counts half the spread, `report.slippage` and
+`report.commission_per_lot`; swaps and financing are not predicted.
+
+### Risk per trade
+
+The default is 1% of current equity. `/risk 1`, `/risk 2` or `/risk 3` changes
+it; 2% and 3% are higher-risk settings that apply only because you chose them,
+and the bot says so when you do. The lot size comes from equity, the stop
+distance, the contract value per point, the broker's minimum, step and maximum
+lot, half the spread, `report.slippage` and `report.commission_per_lot`. It
+reduces the number of deals first; if the broker's minimum lot would still lose
+more than the limit, the trade is rejected, never forced to 0.01 lot.
+
+### The 30-day plan
+
+`/plan30 start [capital]` begins a 30-day performance record from $100. It is
+tracking and reporting, not a target: nothing it shows ever makes the bot take a
+trade or more risk. Two ledgers are kept apart:
+
+* **Theoretical**: starts at the capital and compounds 25 % a day. This is
+  arithmetic (about $80,800 after 30 days), not a forecast.
+* **Actual**: starts at the capital; each day starts where the previous day
+  really ended. Built only from the bot's recorded fills (broker-booked profit,
+  commission and swap when the broker reports them; otherwise price move × lots
+  × contract value, marked *estimated*; otherwise the bot asks you for the
+  number with `/plan30 result` and holds later days).
+
+**Rounding.** Money is rounded to cents, half away from zero, after every step
+of the theoretical curve (`ROUND(x, 2)` in Excel). Python's own `round` would
+differ by a cent on exact half-cents, so the bot rounds the same way a
+spreadsheet does and the exported file matches it.
+
+Each finished day is reviewed once and then preserved: day, date, actual start,
+theoretical start, target profit, theoretical end, actual net, actual end, %
+return, trades, wins, losses, costs and the worst drop (closed trades only), rule
+compliance, and a continue / reduce risk / pause suggestion. `/plan30 export`
+sends an `.xlsx` with live formulas. The daily loss limit warns once when
+reached; stopping is up to you (or to automatic mode, which stops entering).
 
 ## Install
 
@@ -382,7 +498,7 @@ bar 14:15  HH 3441.0  ADX 24 (cooling)   k=3.0
 
 ### How a decision is made
 
-The bot never opens a trade, so its "decision" is advice for the deal you
+Unless automatic trading is on, the bot never opens a trade, so its "decision" is advice for the deal you
 place, shown in every report and `/now`:
 
 ```
@@ -441,7 +557,7 @@ The three deals of a basket always share one management chart.
 report therefore says how many lots per deal keep a stop-out to
 `report.risk_percent` of your balance (rounded down to the broker's lot step).
 If even the minimum lot risks more than that, the report says so with the real
-percentage. This is advice for the deal you place — the bot still never opens
+percentage. This is advice for the deal you place — unless automatic trading is on, the bot still never opens
 one.
 
 ### Partial closes on Capital.com
