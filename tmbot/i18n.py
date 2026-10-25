@@ -634,6 +634,7 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "/report [epic]     rebuild and send the full plan\n"
             "/plan [epic]       show the stored plan, short\n"
             "/full [epic]       the stored plan with every section\n"
+            "/plan30            30-day growth plan: status, table, export\n"
             "/short             always send the short message\n"
             "/auto              long only when unsure or risky (default)\n"
             "/close <id>        close the remaining size now\n"
@@ -652,6 +653,7 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "‎/report [epic]‎     إعادة بناء الخطة وإرسالها\n"
             "‎/plan [epic]‎       عرض الخطة المحفوظة باختصار\n"
             "‎/full [epic]‎       الخطة المحفوظة بكل الأقسام\n"
+            "‎/plan30‎            خطة النمو 30 يومًا: الحالة والجدول والتصدير\n"
             "‎/short‎             إرسال الرسالة المختصرة دائمًا\n"
             "‎/auto‎              الكاملة فقط عند عدم اليقين أو الخطر (الافتراضي)\n"
             "‎/close <id>‎        إغلاق الكمية المتبقية الآن\n"
@@ -872,6 +874,189 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "No stored plan for {epic}. Try /report {epic}.",
         "ar": "لا توجد خطة محفوظة لـ {epic}. جرّب ‎/report {epic}‎.",
     },
+    # 30-day growth plan (/plan30).
+    "p30.usage": {
+        "en": "/plan30 | /plan30 start [capital] | /plan30 table | /plan30 result [day] <net> "
+              "[note] | /plan30 note <text> | /plan30 export | /plan30 report",
+        "ar": "‎/plan30‎ | ‎/plan30 start [رأس المال]‎ | ‎/plan30 table‎ | "
+              "‎/plan30 result [اليوم] <الصافي> [ملاحظة]‎ | ‎/plan30 note <نص>‎ | "
+              "‎/plan30 export‎ | ‎/plan30 report‎",
+    },
+    "p30.not_started": {
+        "en": "No 30-day plan is running. /plan30 start [capital] starts one today "
+              "(default 100).",
+        "ar": "لا توجد خطة 30 يومًا قيد التشغيل. ‎/plan30 start [رأس المال]‎ تبدأ واحدة "
+              "اليوم (الافتراضي 100).",
+    },
+    "p30.exists": {
+        "en": "A plan has been running since {date}. Its history is preserved and cannot "
+              "be restarted from chat.",
+        "ar": "توجد خطة تعمل منذ {date}. سجلها محفوظ ولا يمكن إعادة تشغيلها من المحادثة.",
+    },
+    "p30.started": {
+        "en": "📅 30-day plan started: capital {capital} {currency}, day 1 is {date}.\n"
+              "Theoretical growth 25% a day is a maths scenario, not an expectation. "
+              "Daily loss limit {percent}%, risk {risk}% per trade. Nothing is traded for "
+              "you; this only tracks and warns.",
+        "ar": "📅 بدأت خطة 30 يومًا: رأس المال {capital} {currency}، اليوم الأول {date}.\n"
+              "النمو النظري 25% يوميًا سيناريو حسابي وليس توقعًا. حد الخسارة اليومي "
+              "{percent}% والمخاطرة {risk}% للصفقة. لا يتم تنفيذ أي صفقة نيابة عنك؛ "
+              "الخطة تتابع وتنبه فقط.",
+    },
+    "p30.status": {
+        "en": "📅 30-Day Plan — Day {n} of {days} ({date})\n"
+              "💰 Actual at start of day {actual} {currency} | Theoretical end of day {theory} {currency}\n"
+              "📊 Today: {today}{limit}\n"
+              "📈 Reviewed days {net} {currency} ({pct}%) | gap to the scenario {gap} {currency}\n"
+              "⚠️ 25% a day is a maths scenario, not an expectation. Never force a trade.",
+        "ar": "📅 خطة 30 يومًا — اليوم {n} من {days} ({date})\n"
+              "💰 الفعلي بداية اليوم {actual} {currency} | النظري نهاية اليوم {theory} {currency}\n"
+              "📊 اليوم: {today}{limit}\n"
+              "📈 الأيام المراجعة {net} {currency} ({pct}%) | الفرق عن السيناريو {gap} {currency}\n"
+              "⚠️ 25% يوميًا سيناريو حسابي وليس توقعًا. لا تُجبر نفسك على صفقة.",
+    },
+    "p30.today": {
+        "en": "net {net} ({trades} trade(s){estimated})",
+        "ar": "الصافي {net} ({trades} صفقة{estimated})",
+    },
+    "p30.today_none": {"en": "no trades yet", "ar": "لا صفقات بعد"},
+    "p30.today_unknown": {
+        "en": "waiting for a result (/plan30 result <net>)",
+        "ar": "بانتظار النتيجة (‎/plan30 result <الصافي>‎)",
+    },
+    "p30.estimated": {"en": ", estimated", "ar": "، تقديري"},
+    "p30.limit": {
+        "en": "🛑 Daily loss limit {limit} {currency} ({used}% used)",
+        "ar": "🛑 حد الخسارة اليومي {limit} {currency} (مستخدم {used}%)",
+    },
+    "p30.limit_hit": {
+        "en": "🛑 Day {n}: the daily loss limit is reached ({net} of {limit} {currency}, "
+              "{percent}% of the day's starting balance). Stop trading for today.",
+        "ar": "🛑 اليوم {n}: بلغت حد الخسارة اليومي ({net} من {limit} {currency}، "
+              "{percent}% من رصيد بداية اليوم). توقف عن التداول لهذا اليوم.",
+    },
+    "p30.pending": {
+        "en": "Day {n} ({date}) has trades but no P/L the bot can work out. Record it with "
+              "/plan30 result {n} <net profit or loss>; later days wait for it.",
+        "ar": "اليوم {n} ({date}) فيه صفقات لكن لا يمكن حساب النتيجة. سجّلها بـ "
+              "‎/plan30 result {n} <صافي الربح أو الخسارة>‎؛ الأيام التالية تنتظرها.",
+    },
+    "p30.pending_short": {
+        "en": "⏳ Waiting for a result: day {days}", "ar": "⏳ بانتظار نتيجة اليوم: {days}",
+    },
+    "p30.table_head": {
+        "en": "Day | date | actual start → end ({currency}) | net | theoretical start → end | "
+              "25% hit | trades",
+        "ar": "اليوم | التاريخ | الفعلي بداية ← نهاية ({currency}) | الصافي | النظري "
+              "بداية ← نهاية | 25% | الصفقات",
+    },
+    "p30.table_row": {
+        "en": "D{n} {date} | {a_start} → {a_end} | {net} | {t_start} → {t_end} | {mark} | {trades}",
+        "ar": "ي{n} {date} | {a_start} ← {a_end} | {net} | {t_start} ← {t_end} | {mark} | {trades}",
+    },
+    "p30.table_foot": {
+        "en": "Full 30 rows with formulas: /plan30 export", "ar": "الجدول الكامل بالمعادلات: ‎/plan30 export‎",
+    },
+    "p30.bad_day": {
+        "en": "That day is not part of the plan yet (days 1–{days}, up to today).",
+        "ar": "هذا اليوم ليس ضمن الخطة بعد (الأيام 1–{days} حتى اليوم).",
+    },
+    "p30.locked": {
+        "en": "Day {n} has been reviewed and is preserved; it cannot be changed.",
+        "ar": "اليوم {n} تمت مراجعته ومحفوظ ولا يمكن تغييره.",
+    },
+    "p30.recorded": {
+        "en": "Day {n} result recorded: {net} {currency}.",
+        "ar": "تم تسجيل نتيجة اليوم {n}: {net} {currency}.",
+    },
+    "p30.noted": {"en": "Note saved for day {n}.", "ar": "تم حفظ الملاحظة لليوم {n}."},
+    "p30.no_excel": {
+        "en": "Excel export needs the openpyxl package: run update.bat, then try again.",
+        "ar": "تصدير إكسل يحتاج حزمة openpyxl: شغّل update.bat ثم أعد المحاولة.",
+    },
+    "p30.export_failed": {
+        "en": "Could not write the spreadsheet: {error}", "ar": "تعذّر كتابة الجدول: {error}",
+    },
+    "p30.exported": {
+        "en": "30-day plan spreadsheet (saved at {path})",
+        "ar": "جدول خطة 30 يومًا (محفوظ في {path})",
+    },
+    "p30.in_progress": {"en": "in progress", "ar": "قيد التنفيذ"},
+    "p30.no_trade_note": {
+        "en": "No-trade day: no valid setup recorded.", "ar": "يوم بلا صفقات: لم تظهر فرصة صالحة.",
+    },
+    "p30.review": {
+        "en": "📅 Day {n} review — {date}\n"
+              "💰 {start} → {end} {currency} ({pct}%) | 25% target reached: {achieved}\n"
+              "{body}\n"
+              "🎯 Scenario for the day {theory} {currency} | gap {gap} {currency}\n"
+              "📋 Rules: {rules}\n"
+              "➡️ Next: {decision}",
+        "ar": "📅 مراجعة اليوم {n} — {date}\n"
+              "💰 {start} ← {end} {currency} ({pct}%) | بلوغ هدف 25%: {achieved}\n"
+              "{body}\n"
+              "🎯 السيناريو لليوم {theory} {currency} | الفرق {gap} {currency}\n"
+              "📋 القواعد: {rules}\n"
+              "➡️ التالي: {decision}",
+    },
+    "p30.review_trades": {
+        "en": "🔢 Trades {trades} (won {wins} / lost {losses}) | costs {costs} | max drawdown {dd}",
+        "ar": "🔢 الصفقات {trades} (رابحة {wins} / خاسرة {losses}) | التكاليف {costs} | "
+              "أقصى تراجع {dd}",
+    },
+    "p30.review_no_trade": {
+        "en": "🔢 No-trade day: no valid setup, nothing recorded or made up.",
+        "ar": "🔢 يوم بلا صفقات: لا فرصة صالحة، ولم يُسجَّل أو يُختلق شيء.",
+    },
+    "p30.rules_ok": {"en": "all followed", "ar": "اتُّبعت كلها"},
+    "p30.rules_broken": {"en": "broken — {rules}", "ar": "كُسرت — {rules}"},
+    "p30.rule.loss_limit": {
+        "en": "daily loss limit exceeded", "ar": "تجاوز حد الخسارة اليومي",
+    },
+    "p30.rule.trade_risk": {
+        "en": "a trade lost more than the per-trade risk",
+        "ar": "صفقة خسرت أكثر من حد المخاطرة للصفقة",
+    },
+    "p30.yes": {"en": "yes", "ar": "نعم"},
+    "p30.no": {"en": "no", "ar": "لا"},
+    "p30.decision.continue": {
+        "en": "continue as planned", "ar": "المتابعة كما هو مخطط",
+    },
+    "p30.decision.reduce": {
+        "en": "reduce risk until the rules hold again", "ar": "خفّض المخاطرة حتى تلتزم بالقواعد",
+    },
+    "p30.decision.pause": {
+        "en": "pause trading and review before the next session",
+        "ar": "أوقف التداول وراجع قبل الجلسة القادمة",
+    },
+    "p30.estimated_note": {
+        "en": "ℹ️ Some profit was estimated (price move × lots × contract value); the broker did "
+              "not book it. Correct it with /plan30 result if your statement differs.",
+        "ar": "ℹ️ بعض الربح تقديري (حركة السعر × اللوت × قيمة العقد) لأن الوسيط لم يسجله. "
+              "صحّحه بـ ‎/plan30 result‎ إن اختلف كشفك.",
+    },
+    "p30.final": {
+        "en": "🏁 30-Day Report ({days}/{total} days recorded, {state})\n"
+              "Initial {initial} → final actual {final} {currency}\n"
+              "Net {net} {currency} ({pct}%)\n"
+              "Theoretical final {theory} {currency} | difference {diff} {currency}\n"
+              "Trades: won {wins}, lost {losses} (win rate {rate})\n"
+              "Max drawdown {dd} (closed trades) | costs {costs} {currency}\n"
+              "Rules followed on {compliant} of {reviewed} reviewed days; "
+              "over the daily loss limit on {over}.\n"
+              "This measures process, not a promised return.",
+        "ar": "🏁 تقرير 30 يومًا ({days}/{total} يومًا مسجلًا، {state})\n"
+              "البداية {initial} ← النهاية الفعلية {final} {currency}\n"
+              "الصافي {net} {currency} ({pct}%)\n"
+              "النهاية النظرية {theory} {currency} | الفرق {diff} {currency}\n"
+              "الصفقات: رابحة {wins}، خاسرة {losses} (نسبة النجاح {rate})\n"
+              "أقصى تراجع {dd} (الصفقات المغلقة) | التكاليف {costs} {currency}\n"
+              "اتُّبعت القواعد في {compliant} من {reviewed} يومًا؛ "
+              "تجاوز حد الخسارة اليومي في {over}.\n"
+              "هذا يقيس الالتزام بالعملية وليس عائدًا مضمونًا.",
+    },
+    "p30.done": {"en": "complete", "ar": "مكتملة"},
+    "p30.in_progress_state": {"en": "in progress", "ar": "قيد التنفيذ"},
     # Why a message was sent in full.
     "detail.notice": {
         "en": "ℹ️ **Full report because:** {reasons}",

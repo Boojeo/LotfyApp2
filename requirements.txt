@@ -11,6 +11,10 @@ matplotlib>=3.8
 arabic-reshaper>=3.0     # joins Arabic letters -- matplotlib does not
 python-bidi>=0.4         # reorders mixed Arabic/number labels
 
+# Excel export of the 30-day plan (/plan30 export). Without it everything else
+# still works.
+openpyxl>=3.1
+
 # Optional: the fundamental/news synthesis. Without it the bot falls back to a
 # deterministic keyword read and still produces a full daily report.
 anthropic>=1.0
