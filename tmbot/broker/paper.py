@@ -149,7 +149,8 @@ class PaperBroker(BrokerAdapter):
         stop_level: Optional[float] = None,
         profit_level: Optional[float] = None,
     ) -> str:
-        self._record("open_position", epic, direction, size, stop_level=stop_level)
+        self._record("open_position", epic, direction, size, stop_level=stop_level,
+                     profit_level=profit_level)
         if not self.hedging:
             # Netting: an opposite deal reduces the existing position.
             for deal_id, position in list(self._positions.items()):

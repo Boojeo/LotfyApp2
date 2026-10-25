@@ -614,9 +614,9 @@ CATALOG: Dict[str, Dict[str, str]] = {
     },
     "command.short_on": {
         "en": "Short messages from now on, even when unsure or the risk is big. "
-              "/full [symbol] still shows the long report. /auto goes back to automatic.",
+              "/full [symbol] still shows the long report. /msg_auto goes back to automatic.",
         "ar": "رسائل مختصرة من الآن، حتى عند عدم اليقين أو ارتفاع الخطر. "
-              "‎/full [الرمز]‎ ما زال يعرض التقرير الكامل. ‎/auto‎ يعيد الوضع التلقائي.",
+              "‎/full [الرمز]‎ ما زال يعرض التقرير الكامل. ‎/msg_auto‎ يعيد الوضع التلقائي.",
     },
     "command.auto_on": {
         "en": "Automatic: short messages, and the long report only when the analysis is "
@@ -635,8 +635,14 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "/plan [epic]       show the stored plan, short\n"
             "/full [epic]       the stored plan with every section\n"
             "/plan30            30-day growth plan: status, table, export\n"
+            "/plan_status       30-day plan status\n"
+            "/auto_on /auto_off turn automatic trading on or off\n"
+            "/auto_status       automatic trading state and latest decisions\n"
+            "/risk [1|2|3]      show or set the risk per trade (% of equity)\n"
+            "/daily_report      today's results and risk\n"
+            "/panic             close all managed trades (asks to confirm)\n"
             "/short             always send the short message\n"
-            "/auto              long only when unsure or risky (default)\n"
+            "/msg_auto          long report only when unsure or risky (default)\n"
             "/close <id>        close the remaining size now\n"
             "/be <id>           move the stop to entry now\n"
             "/journal [days]    win rate, R per instrument, target hit rates\n"
@@ -654,8 +660,14 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "‎/plan [epic]‎       عرض الخطة المحفوظة باختصار\n"
             "‎/full [epic]‎       الخطة المحفوظة بكل الأقسام\n"
             "‎/plan30‎            خطة النمو 30 يومًا: الحالة والجدول والتصدير\n"
+            "‎/plan_status‎       حالة خطة 30 يومًا\n"
+            "‎/auto_on /auto_off‎ تشغيل أو إيقاف التداول الآلي\n"
+            "‎/auto_status‎       حالة التداول الآلي وآخر القرارات\n"
+            "‎/risk [1|2|3]‎      عرض أو ضبط المخاطرة للصفقة (% من رأس المال)\n"
+            "‎/daily_report‎      نتائج اليوم والمخاطرة\n"
+            "‎/panic‎             إغلاق كل الصفقات المُدارة (يطلب التأكيد)\n"
             "‎/short‎             إرسال الرسالة المختصرة دائمًا\n"
-            "‎/auto‎              الكاملة فقط عند عدم اليقين أو الخطر (الافتراضي)\n"
+            "‎/msg_auto‎          التقرير الكامل فقط عند عدم اليقين أو الخطر (الافتراضي)\n"
             "‎/close <id>‎        إغلاق الكمية المتبقية الآن\n"
             "‎/be <id>‎           نقل الوقف إلى سعر الدخول الآن\n"
             "‎/journal [أيام]‎    نسبة الربح والأداء لكل أداة\n"
@@ -873,6 +885,305 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "report.no_plan": {
         "en": "No stored plan for {epic}. Try /report {epic}.",
         "ar": "لا توجد خطة محفوظة لـ {epic}. جرّب ‎/report {epic}‎.",
+    },
+    # Automatic trading (/auto_on, /auto_off, /auto_status, /risk, /daily_report, /panic).
+    "auto.dry_run": {"en": " (DRY RUN: orders are only logged)", "ar": " (تجريبي: تُسجَّل الأوامر فقط)"},
+    "auto.forced_off": {
+        "en": "Automatic trading is OFF after the restart: a live account never resumes "
+              "by itself. Send /auto_on to turn it on for this session.",
+        "ar": "التداول الآلي متوقف بعد إعادة التشغيل: الحساب الحقيقي لا يستأنف تلقائيًا. "
+              "أرسل ‎/auto_on‎ لتشغيله في هذه الجلسة.",
+    },
+    "auto.pending_settled": {
+        "en": "An order on {epic} was in flight when the bot stopped. Checked the account: "
+              "{count} position(s) are open there now. No order is repeated.",
+        "ar": "كان هناك أمر على {epic} قيد التنفيذ عند توقف البوت. فُحص الحساب: توجد "
+              "{count} صفقة مفتوحة الآن. لن يُكرَّر أي أمر.",
+    },
+    "auto.already_on": {
+        "en": "Automatic trading is already ON. /auto_status shows its state.",
+        "ar": "التداول الآلي يعمل بالفعل. ‎/auto_status‎ يعرض حالته.",
+    },
+    "auto.not_enabled": {
+        "en": "Automatic trading is switched off in the settings (auto.enabled: false). "
+              "Set it to true in config.yaml and restart the bot first. Nothing was turned on.",
+        "ar": "التداول الآلي معطّل في الإعدادات (auto.enabled: false). اجعله true في "
+              "config.yaml وأعد تشغيل البوت أولًا. لم يتم تشغيل شيء.",
+    },
+    "auto.not_enabled_short": {
+        "en": "⚠️ auto.enabled is false in the config, so /auto_on will refuse.",
+        "ar": "⚠️ الإعداد auto.enabled يساوي false لذلك سيرفض ‎/auto_on‎.",
+    },
+    "auto.live_not_allowed": {
+        "en": "This is a LIVE account and auto.allow_live is false. Automatic trading with "
+              "real money needs that setting turned on by you in config.yaml. Nothing was "
+              "turned on.",
+        "ar": "هذا حساب حقيقي والإعداد auto.allow_live يساوي false. التداول الآلي بأموال حقيقية "
+              "يحتاج أن تفعّل هذا الإعداد بنفسك في config.yaml. لم يتم تشغيل شيء.",
+    },
+    "auto.live_confirm": {
+        "en": "⚠️ LIVE account: this will place REAL orders with real money. To confirm, "
+              "send /auto_on {code} within {seconds} seconds.",
+        "ar": "⚠️ حساب حقيقي: سيُرسل أوامر حقيقية بأموال حقيقية. للتأكيد أرسل "
+              "‎/auto_on {code}‎ خلال {seconds} ثانية.",
+    },
+    "auto.bad_risk": {
+        "en": "The risk per trade is {risk}%, which is not 1, 2 or 3. Choose one with "
+              "/risk 1, /risk 2 or /risk 3 first. Nothing was turned on.",
+        "ar": "نسبة المخاطرة للصفقة {risk}% وليست 1 أو 2 أو 3. اختر واحدة بـ ‎/risk 1‎ أو "
+              "‎/risk 2‎ أو ‎/risk 3‎ أولًا. لم يتم تشغيل شيء.",
+    },
+    "auto.no_instruments": {
+        "en": "No instruments to trade: the watchlist and auto.instruments are empty.",
+        "ar": "لا توجد أدوات للتداول: قائمة المراقبة وauto.instruments فارغتان.",
+    },
+    "auto.algo_off": {
+        "en": "MetaTrader 5's Algo Trading button is off, so orders would be refused. "
+              "Turn it on, then send /auto_on again.",
+        "ar": "زر Algo Trading في ميتاتريدر 5 مطفأ لذلك سترفض الأوامر. شغّله ثم أرسل "
+              "‎/auto_on‎ مجددًا.",
+    },
+    "auto.no_hedging": {
+        "en": "This account nets positions, so three separate deals cannot be held. Automatic "
+              "trading needs a hedging account for the three-deal exit model.",
+        "ar": "هذا الحساب يدمج الصفقات فلا يمكن الاحتفاظ بثلاث صفقات منفصلة. التداول الآلي "
+              "يحتاج حساب تحوّط لنموذج الخروج بثلاث صفقات.",
+    },
+    "auto.broker_unreadable": {
+        "en": "Could not check the broker account ({error}). Nothing was turned on.",
+        "ar": "تعذّر فحص حساب الوسيط ({error}). لم يتم تشغيل شيء.",
+    },
+    "auto.on": {
+        "en": "🤖 Automatic trading is ON ({env}){dry}.\n"
+              "Risk {risk}% per trade | daily loss limit {limit}% | up to {cap} open deals\n"
+              "Instruments: {instruments}\n"
+              "Sessions: {start}–{end} UTC, Mon–Fri\n"
+              "Only APPROVED, aligned, strong signals are traded, each with its stop set at "
+              "the broker. /auto_off stops new entries at once; open trades keep being "
+              "managed. /panic closes everything after a confirmation.",
+        "ar": "🤖 التداول الآلي يعمل ({env}){dry}.\n"
+              "المخاطرة {risk}% للصفقة | حد الخسارة اليومي {limit}% | حتى {cap} صفقات مفتوحة\n"
+              "الأدوات: {instruments}\n"
+              "الجلسات: {start}–{end} بتوقيت UTC، من الإثنين إلى الجمعة\n"
+              "تُتداول فقط الإشارات المقبولة والمتوافقة والقوية، ولكل صفقة وقفها عند الوسيط. "
+              "‎/auto_off‎ يوقف الدخول الجديد فورًا والصفقات المفتوحة تبقى مُدارة. "
+              "‎/panic‎ يغلق كل شيء بعد التأكيد.",
+    },
+    "auto.off": {
+        "en": "🛑 Automatic trading is OFF ({was}). No new entries will be made.\n"
+              "Open trades are NOT closed: stops, targets, trailing and reversal alerts keep "
+              "working as before, and you can still use /close <id>. /panic closes everything "
+              "after a confirmation.",
+        "ar": "🛑 التداول الآلي متوقف ({was}). لن تُفتح صفقات جديدة.\n"
+              "الصفقات المفتوحة لا تُغلق: الوقف والأهداف والتتبع وتنبيهات الانعكاس تعمل كما "
+              "كانت، ويمكنك استخدام ‎/close <id>‎. ‎/panic‎ يغلق كل شيء بعد التأكيد.",
+    },
+    "auto.was_on": {"en": "it was ON", "ar": "كان يعمل"},
+    "auto.was_off": {"en": "it was already OFF", "ar": "كان متوقفًا بالفعل"},
+    "auto.panic_confirm": {
+        "en": "⚠️ /panic turns automatic trading OFF and CLOSES every trade the bot manages, "
+              "now. To confirm, send /panic {code} within {seconds} seconds.",
+        "ar": "⚠️ ‎/panic‎ يوقف التداول الآلي ويُغلق كل صفقة يديرها البوت الآن. للتأكيد أرسل "
+              "‎/panic {code}‎ خلال {seconds} ثانية.",
+    },
+    "auto.panic_start": {
+        "en": "🚨 Panic: automatic trading OFF. Closing {count} managed trade(s).",
+        "ar": "🚨 طوارئ: التداول الآلي متوقف. إغلاق {count} صفقة مُدارة.",
+    },
+    "auto.panic_failed": {
+        "en": "Could not close {id}: {error}. Close it yourself.",
+        "ar": "تعذّر إغلاق {id}: {error}. أغلقها بنفسك.",
+    },
+    "auto.legacy": {
+        "en": "Did you mean /auto_on, /auto_off or /auto_status for automatic trading, or "
+              "/msg_auto for the message length? Nothing was changed.",
+        "ar": "هل تقصد ‎/auto_on‎ أو ‎/auto_off‎ أو ‎/auto_status‎ للتداول الآلي، أو ‎/msg_auto‎ "
+              "لطول الرسالة؟ لم يتغير شيء.",
+    },
+    "risk.cmd_usage": {
+        "en": "Risk per trade can be 1, 2 or 3 (% of equity): /risk 1, /risk 2 or /risk 3. "
+              "1% is the default; 2% and 3% are higher-risk settings that you choose, never "
+              "applied automatically.",
+        "ar": "المخاطرة للصفقة يمكن أن تكون 1 أو 2 أو 3 (% من رأس المال): ‎/risk 1‎ أو ‎/risk 2‎ أو "
+              "‎/risk 3‎. الافتراضي 1%؛ و2% و3% إعدادات أعلى مخاطرة تختارها أنت ولا تُطبَّق تلقائيًا.",
+    },
+    "risk.cmd_set": {
+        "en": "✅ Risk per trade set to {risk}% of equity.",
+        "ar": "✅ تم ضبط المخاطرة للصفقة على {risk}% من رأس المال.",
+    },
+    "risk.cmd_higher": {
+        "en": "⚠️ {risk}% is a higher-risk setting. Your choice; /risk 1 returns to the default.",
+        "ar": "⚠️ {risk}% إعداد أعلى مخاطرة. هذا اختيارك؛ ‎/risk 1‎ يعيد الافتراضي.",
+    },
+    "risk.cmd_status": {
+        "en": "🎯 Risk per trade: {risk}% of equity = {money} (equity {equity}).\n"
+              "Costs counted in the lot size: commission {commission} per lot, slippage "
+              "{slippage}, plus half the spread. Change with /risk 1|2|3.",
+        "ar": "🎯 المخاطرة للصفقة: {risk}% من رأس المال = {money} (رأس المال {equity}).\n"
+              "التكاليف المحسوبة في حجم اللوت: عمولة {commission} لكل لوت، انزلاق {slippage}، "
+              "ونصف الفارق السعري. للتغيير ‎/risk 1|2|3‎.",
+    },
+    "auto.dry_opened": {
+        "en": "🤖 [DRY RUN] would open {side} {legs} x {lots} lots on {epic}, SL {sl}. "
+              "Nothing was sent to the broker.",
+        "ar": "🤖 [تجريبي] كان سيفتح {side} {legs} × {lots} لوت على {epic}، الوقف {sl}. "
+              "لم يُرسل شيء إلى الوسيط.",
+    },
+    "auto.opened": {
+        "en": "🤖 AUTO OPENED: {epic} — {side}\n"
+              "{legs} x {lots} lots | entry {entry} | SL {sl} (distance {distance})\n"
+              "TP1 {tp1} · TP2 {tp2} · TP3 {tp3}\n"
+              "⚠️ Risk {risk}% = max {maxloss} {currency} | estimated loss at SL {estloss} {currency}",
+        "ar": "🤖 فُتحت آليًا: {epic} — {side}\n"
+              "{legs} × {lots} لوت | الدخول {entry} | الوقف {sl} (المسافة {distance})\n"
+              "الهدف1 {tp1} · الهدف2 {tp2} · الهدف3 {tp3}\n"
+              "⚠️ المخاطرة {risk}% = حد أقصى {maxloss} {currency} | الخسارة المقدرة عند الوقف "
+              "{estloss} {currency}",
+    },
+    "auto.rejected": {
+        "en": "🤖 {epic}: no automatic trade — {reason}",
+        "ar": "🤖 {epic}: لا صفقة آلية — {reason}",
+    },
+    "auto.limit_reached": {
+        "en": "🛑 {epic}: {reason}\nNo new automatic entries today; open trades are still managed.",
+        "ar": "🛑 {epic}: {reason}\nلا دخول آلي جديد اليوم؛ الصفقات المفتوحة ما زالت تُدار.",
+    },
+    "auto.error": {
+        "en": "❗ Automatic trading, {epic}: {error}",
+        "ar": "❗ التداول الآلي، {epic}: {error}",
+    },
+    "auto.state_on": {"en": "ON", "ar": "يعمل"},
+    "auto.state_off": {"en": "OFF", "ar": "متوقف"},
+    "auto.session_open": {"en": "open now", "ar": "مفتوحة الآن"},
+    "auto.session_closed": {"en": "closed now", "ar": "مغلقة الآن"},
+    "auto.status": {
+        "en": "🤖 Automatic trading: {state} ({env}){dry}\n"
+              "Risk {risk}% per trade | strength at least {minimum}/100\n"
+              "Instruments: {instruments}\n"
+              "Session {start}–{end} UTC Mon–Fri: {session}\n"
+              "Open deals {open} of {cap} | daily loss limit {limit}% ({used}% used)",
+        "ar": "🤖 التداول الآلي: {state} ({env}){dry}\n"
+              "المخاطرة {risk}% للصفقة | قوة الإشارة لا تقل عن {minimum}/100\n"
+              "الأدوات: {instruments}\n"
+              "الجلسة {start}–{end} UTC من الإثنين إلى الجمعة: {session}\n"
+              "الصفقات المفتوحة {open} من {cap} | حد الخسارة اليومي {limit}% (مستخدم {used}%)",
+    },
+    "auto.status_blocked": {
+        "en": "🛑 The daily loss limit is reached: no new entries until tomorrow.",
+        "ar": "🛑 بلغت حد الخسارة اليومي: لا دخول جديد حتى الغد.",
+    },
+    "auto.recent": {"en": "Latest decisions:", "ar": "آخر القرارات:"},
+    "auto.report_no_equity": {
+        "en": "The account equity could not be read, so no daily figures are shown.",
+        "ar": "تعذّرت قراءة رأس مال الحساب لذلك لا تُعرض أرقام اليوم.",
+    },
+    "auto.report_results_unknown": {
+        "en": "Trades: result cannot be worked out (use /plan30 result)",
+        "ar": "الصفقات: لا يمكن حساب النتيجة (استخدم ‎/plan30 result‎)",
+    },
+    "auto.report_results_none": {"en": "Trades: none closed today", "ar": "الصفقات: لا صفقات مغلقة اليوم"},
+    "auto.report_results": {
+        "en": "Closed trades: {trades} (won {wins} / lost {losses}) | net {net}{estimated}\n"
+              "Costs {costs} | worst drop {dd}",
+        "ar": "الصفقات المغلقة: {trades} (رابحة {wins} / خاسرة {losses}) | الصافي {net}{estimated}\n"
+              "التكاليف {costs} | أكبر تراجع {dd}",
+    },
+    "auto.report": {
+        "en": "📊 Daily report — {date}\n"
+              "💰 Equity {start} → {equity} ({change}, {pct}%)\n"
+              "{results}\n"
+              "📈 Open: {held} of {cap} deals | floating {floating}\n"
+              "🛑 Daily loss limit {limit}%: {used}% used\n"
+              "🎯 Risk {risk}% per trade = max {maxrisk}\n"
+              "🤖 Automatic trading {state}: orders {orders}, opened {opened}, rejected "
+              "{rejected}, errors {errors}",
+        "ar": "📊 التقرير اليومي — {date}\n"
+              "💰 رأس المال {start} ← {equity} ({change}، {pct}%)\n"
+              "{results}\n"
+              "📈 المفتوح: {held} من {cap} صفقات | العائم {floating}\n"
+              "🛑 حد الخسارة اليومي {limit}%: مستخدم {used}%\n"
+              "🎯 المخاطرة {risk}% للصفقة = حد أقصى {maxrisk}\n"
+              "🤖 التداول الآلي {state}: أوامر {orders}، مفتوحة {opened}، مرفوضة {rejected}، "
+              "أخطاء {errors}",
+    },
+    "auto.reject.not_permitted": {"en": "not a permitted instrument", "ar": "أداة غير مسموح بها"},
+    "auto.reject.outside_session": {
+        "en": "outside the trading session ({start}–{end} UTC, Mon–Fri)",
+        "ar": "خارج جلسة التداول ({start}–{end} UTC، من الإثنين إلى الجمعة)",
+    },
+    "auto.reject.equity_unknown": {
+        "en": "the account equity could not be read, so nothing is opened",
+        "ar": "تعذّرت قراءة رأس مال الحساب لذلك لن تُفتح صفقة",
+    },
+    "auto.reject.daily_limit": {
+        "en": "daily loss limit reached: down {loss} today ({percent}% of the day's start, "
+              "limit {limit}%)",
+        "ar": "بلغت حد الخسارة اليومي: خسارة {loss} اليوم ({percent}% من بداية اليوم، "
+              "الحد {limit}%)",
+    },
+    "auto.reject.data_error": {
+        "en": "market or account data is missing ({error})",
+        "ar": "بيانات السوق أو الحساب غير متوفرة ({error})",
+    },
+    "auto.reject.open_on_instrument": {
+        "en": "a position on this instrument is already open",
+        "ar": "توجد صفقة مفتوحة على هذه الأداة بالفعل",
+    },
+    "auto.reject.positions_full": {
+        "en": "the open-deal cap is reached ({count} open, maximum {cap})",
+        "ar": "بلغت الحد الأقصى للصفقات المفتوحة ({count} مفتوحة، الحد {cap})",
+    },
+    "auto.reject.order_pending": {
+        "en": "an earlier order is not settled yet", "ar": "أمر سابق لم يُحسم بعد",
+    },
+    "auto.reject.no_plan": {
+        "en": "the analysis failed ({error})", "ar": "فشل التحليل ({error})",
+    },
+    "auto.reject.no_direction": {"en": "no clear direction", "ar": "لا يوجد اتجاه واضح"},
+    "auto.reject.against_bias": {
+        "en": "the levels are for the side against the analysis",
+        "ar": "المستويات للجهة المعاكسة للتحليل",
+    },
+    "auto.reject.not_approved": {
+        "en": "the verdict is {verdict}, not APPROVED", "ar": "الحكم {verdict} وليس مقبولًا",
+    },
+    "auto.reject.weak_signal": {
+        "en": "signal strength {strength}/100 is below {minimum}",
+        "ar": "قوة الإشارة {strength}/100 أقل من {minimum}",
+    },
+    "auto.reject.not_aligned": {
+        "en": "the higher timeframe is not aligned ({alignment})",
+        "ar": "الإطار الأعلى غير متوافق ({alignment})",
+    },
+    "auto.reject.doubtful": {
+        "en": "too uncertain or risky: {reasons}", "ar": "غير مؤكدة أو عالية الخطر: {reasons}",
+    },
+    "auto.reject.risk_unchecked": {
+        "en": "the risk could not be checked", "ar": "تعذّر التحقق من المخاطرة",
+    },
+    "auto.reject.risk_rejected": {
+        "en": "the risk limit cannot be met: even the broker's smallest lot loses {minimum} "
+              "{currency} at the stop, over the {percent}% limit ({money} {currency}). The stop "
+              "is not widened and the risk is not raised",
+        "ar": "لا يمكن الالتزام بحد المخاطرة: حتى أصغر لوت عند الوسيط يخسر {minimum} "
+              "{currency} عند الوقف، أكثر من حد {percent}% ({money} {currency}). لا يُوسَّع الوقف "
+              "ولا تُرفع المخاطرة",
+    },
+    "auto.reject.risk_mismatch": {
+        "en": "the plan was sized for a different risk % than the one selected",
+        "ar": "حُسبت الخطة بنسبة مخاطرة مختلفة عن المختارة",
+    },
+    "auto.reject.not_tradeable": {
+        "en": "the market is not tradeable right now", "ar": "السوق غير قابل للتداول الآن",
+    },
+    "auto.reject.cooldown": {
+        "en": "this instrument and side was entered less than {hours} h ago",
+        "ar": "دُخلت هذه الأداة والجهة قبل أقل من {hours} ساعة",
+    },
+    "auto.reject.order_failed": {
+        "en": "the order failed after {opened} of {legs} deal(s) opened: {error}. Nothing is "
+              "retried; check the account",
+        "ar": "فشل الأمر بعد فتح {opened} من {legs} صفقات: {error}. لا إعادة محاولة؛ افحص الحساب",
     },
     # 30-day growth plan (/plan30).
     "p30.usage": {
@@ -1135,7 +1446,10 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "term.camzone.above_r4": {"en": "above R4", "ar": "فوق R4"},
     "term.camzone.below_s3": {"en": "below S3", "ar": "تحت S3"},
     "term.camzone.below_s4": {"en": "below S4", "ar": "تحت S4"},
-    "sm.entry": {"en": "📊 Entry {entry} | SL {sl}", "ar": "📊 الدخول {entry} | الوقف {sl}"},
+    "sm.entry": {
+        "en": "📊 Entry {entry} | SL {sl} (distance {distance})",
+        "ar": "📊 الدخول {entry} | الوقف {sl} (المسافة {distance})",
+    },
     "sm.deal": {
         "en": "⏱ Deal {n} → TP{k} {price} ({r}R) {hours}",
         "ar": "⏱ الصفقة {n} ← الهدف {k} {price} ({r}R) {hours}",
@@ -1149,8 +1463,10 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "{side} {deals} x {lots} lots", "ar": "{side} {deals} × {lots} لوت",
     },
     "sm.risk": {
-        "en": "⚠️ Risk {percent}% = {money} {currency} | Decision: {decision}",
-        "ar": "⚠️ المخاطرة {percent}% = {money} {currency} | القرار: {decision}",
+        "en": "⚠️ Risk {percent}% (max loss {money} {currency}) | est. loss at SL {est} "
+              "{currency} | Decision: {decision}",
+        "ar": "⚠️ المخاطرة {percent}% (حد الخسارة {money} {currency}) | الخسارة المقدرة عند "
+              "الوقف {est} {currency} | القرار: {decision}",
     },
     "sm.decision": {"en": "⚠️ Decision: {decision}", "ar": "⚠️ القرار: {decision}"},
     # Market map: gaps, Fibonacci, support/resistance families.

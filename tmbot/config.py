@@ -327,6 +327,35 @@ class ReportConfig:
     # share of the balance. 0 turns the line off. The bot never opens trades;
     # this is advice for the deal you place yourself.
     risk_percent: float = 1.0
+    # Trading costs added to the risk of a stop-out, so the lots are sized for
+    # what a loss really costs. commission_per_lot is the round-turn charge for
+    # 1.0 lot in account currency; slippage is a price distance added to the
+    # stop like half the spread is. Both 0 unless you set them.
+    commission_per_lot: float = 0.0
+    slippage: float = 0.0
+
+
+# The risk-per-trade values /risk accepts. 1% is the default; 2% and 3% are
+# higher-risk settings that only ever apply because the user chose them.
+RISK_CHOICES = (1.0, 2.0, 3.0)
+
+
+@dataclass
+class AutoConfig:
+    """Automatic trading. Off unless every switch here is turned on by you."""
+
+    enabled: bool = False              # master switch: /auto_on refuses while False
+    allow_live: bool = False           # second switch: needed for a real-money account
+    instruments: List[str] = field(default_factory=list)   # empty = the watchlist
+    session_start: str = "07:00"       # UTC, HH:MM: no new entries before this
+    session_end: str = "20:00"         # UTC, HH:MM: ...or after this
+    weekdays: List[int] = field(default_factory=lambda: [0, 1, 2, 3, 4])  # Monday = 0
+    max_open_positions: int = 3        # deals open at once, all instruments (3 = one basket)
+    daily_loss_limit_percent: float = 3.0   # of the day's starting equity
+    min_signal_strength: float = 60.0  # signal strength out of 100
+    scan_minutes: float = 5.0          # between scans; each scan looks at one instrument
+    cooldown_hours: float = 4.0        # same instrument and side is not re-entered sooner
+    confirm_seconds: float = 120.0     # how long a live /auto_on or /panic code lasts
 
 
 @dataclass
@@ -340,6 +369,7 @@ class Config:
     llm: LLMConfig = field(default_factory=LLMConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     report: ReportConfig = field(default_factory=ReportConfig)
+    auto: AutoConfig = field(default_factory=AutoConfig)
     database: str = "tmbot.sqlite3"
     log_level: str = "INFO"
     dry_run: bool = False
@@ -502,6 +532,31 @@ class Config:
             )
         if not 0 <= self.report.risk_percent <= 10:
             raise ConfigError("report.risk_percent must be between 0 and 10")
+        if self.report.commission_per_lot < 0 or self.report.slippage < 0:
+            raise ConfigError("report.commission_per_lot and report.slippage cannot be negative")
+        auto = self.auto
+        for name in ("session_start", "session_end"):
+            try:
+                hour, minute = (int(part) for part in getattr(auto, name).split(":"))
+                if not (0 <= hour < 24 and 0 <= minute < 60):
+                    raise ValueError
+            except ValueError:
+                raise ConfigError(f"auto.{name} must be HH:MM, got {getattr(auto, name)!r}") from None
+        if not auto.weekdays or any(d not in range(7) for d in auto.weekdays):
+            raise ConfigError("auto.weekdays must list days 0 (Monday) to 6 (Sunday)")
+        if not 0 < auto.daily_loss_limit_percent <= 100:
+            raise ConfigError("auto.daily_loss_limit_percent must be above 0 and at most 100")
+        if auto.max_open_positions < 1:
+            raise ConfigError("auto.max_open_positions must be at least 1")
+        if not 0 <= auto.min_signal_strength <= 100:
+            raise ConfigError("auto.min_signal_strength must be between 0 and 100")
+        if auto.scan_minutes <= 0 or auto.cooldown_hours < 0 or auto.confirm_seconds <= 0:
+            raise ConfigError("auto.scan_minutes, cooldown_hours and confirm_seconds must be positive")
+        if self.auto.enabled and not (self.telegram.enabled and self.telegram.chat_id):
+            raise ConfigError(
+                "auto.enabled needs telegram.enabled and telegram.chat_id: automatic "
+                "trading is only controlled from your own chat"
+            )
         if self.management.on_indivisible_size not in ("hold", "close_all"):
             raise ConfigError("management.on_indivisible_size must be 'hold' or 'close_all'")
 
@@ -571,6 +626,7 @@ _NESTED = {
     "LLMConfig": LLMConfig,
     "TelegramConfig": TelegramConfig,
     "ReportConfig": ReportConfig,
+    "AutoConfig": AutoConfig,
     "StyleConfig": StyleConfig,
 }
 

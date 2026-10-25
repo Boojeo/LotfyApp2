@@ -52,6 +52,8 @@ class RiskAssessment:
     within_limit: bool
     min_lot_money: float         # what one leg at the broker minimum loses
     min_lot_percent: float
+    commission_per_lot: float = 0.0   # round-turn cost of 1.0 lot, in the stop-out loss
+    slippage: float = 0.0             # price distance added to the stop
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -72,6 +74,8 @@ def assess(
     rules: MarketRules,
     legs_planned: int,
     spread: float = 0.0,
+    commission_per_lot: float = 0.0,
+    slippage: float = 0.0,
 ) -> Optional[RiskAssessment]:
     """Size the trade inside the limit, or say plainly that it cannot be.
 
@@ -86,9 +90,12 @@ def assess(
     legs_planned = max(1, legs_planned)
     # A long is bought at the ask and stopped at the bid: the spread is part
     # of the loss, so half of it is added to the distance from the mid.
-    distance = stop_distance + max(0.0, spread) / 2.0
+    # Slippage is a price distance on top of that; commission is money per lot,
+    # so both make a stop-out cost more and the lots smaller -- never the risk
+    # limit bigger.
+    distance = stop_distance + max(0.0, spread) / 2.0 + max(0.0, slippage)
     max_money = equity * risk_percent / 100.0
-    loss_per_lot = distance * value
+    loss_per_lot = distance * value + max(0.0, commission_per_lot)
     ideal = max_money / loss_per_lot
 
     step = rules.size_step or rules.min_deal_size or 0.01
@@ -134,6 +141,8 @@ def assess(
         within_limit=legs > 0 and total_money <= max_money + 1e-9,
         min_lot_money=round(min_lot_money, 2),
         min_lot_percent=round(min_lot_money / equity * 100.0, 3),
+        commission_per_lot=max(0.0, commission_per_lot),
+        slippage=max(0.0, slippage),
     )
 
 

@@ -22,6 +22,7 @@ from ..analysis import chart as chart_module
 from ..analysis import journal as journal_module
 from ..analysis import risk as risk_module
 from ..analysis import style as style_module
+from .auto import AutoTrader
 from .plan30_service import Plan30Service
 from ..analysis.report import (
     ReportBuilder,
@@ -95,9 +96,11 @@ class Supervisor:
     _quotes: Dict[str, Quote] = field(default_factory=dict, init=False)
     _degraded: bool = field(default=False, init=False)
     plan30: Plan30Service = field(default=None, init=False)
+    auto: AutoTrader = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.plan30 = Plan30Service(self)
+        self.auto = AutoTrader(self)
         # A language chosen with /lang outlives a restart; config is the default.
         stored = self.store.get(LANGUAGE_KEY)
         self.t = Translator(stored if stored in LANGUAGES else self.config.language)
@@ -111,6 +114,7 @@ class Supervisor:
     # ------------------------------------------------------------------ lifecycle
 
     def start(self) -> None:
+        self.auto.load_risk_override()
         log.info("starting: %s, %s account -- connecting to the broker",
                  self.broker.name, self.config.broker.environment)
         self.broker.connect()
@@ -130,6 +134,7 @@ class Supervisor:
         self._register_commands()
         self.notifier.set_tag(f"[{self.config.broker.environment.upper()}] ")
         self.notifier.set_translator(self.t)
+        self.auto.restore()
         self.notifier.start()
         account = self.broker.account_summary()
         epics = self.t.join(item.epic for item in self.config.analysis.watchlist) or "-"
@@ -246,6 +251,10 @@ class Supervisor:
                 f"{position.direction.value} {position.size} @ {position.entry_price}",
                 deal_id=trade.deal_id, epic=trade.epic,
             )
+            if self.auto.owns(position):
+                # Our own order: nothing to ask, the bot opened it for this plan.
+                self.auto.adopt(trade)
+                continue
             self.notifier.send(self._adoption_message(trade, plan))
 
     def _advised_legs(self, plan: Optional[TradePlan]) -> int:
@@ -1042,6 +1051,7 @@ class Supervisor:
         self._maybe_daily_report()
         self._maybe_intraday_refresh()
         self.plan30.step()
+        self.auto.step()
 
     def _report_timezone(self):
         # Validated at startup, so this cannot silently become UTC.
@@ -1207,6 +1217,15 @@ class Supervisor:
         self.notifier.register("plan", self.plan_command)
         self.notifier.register("full", self.full_command)
         self.notifier.register("short", self.short_command)
+        self.notifier.register("msg_auto", self.auto_command)
+        self.notifier.register("auto", self.auto.legacy_command)
+        self.notifier.register("auto_on", self.auto.on_command)
+        self.notifier.register("auto_off", self.auto.off_command)
+        self.notifier.register("auto_status", self.auto.status_command)
+        self.notifier.register("risk", self.auto.risk_command)
+        self.notifier.register("daily_report", self.auto.daily_report_command)
+        self.notifier.register("plan_status", lambda _: self.plan30.status())
+        self.notifier.register("panic", self.auto.panic_command)
         self.notifier.register("plan30", self.plan30.command)
         self.notifier.register("auto", self.auto_command)
         self.notifier.register("now", self.now_command)

@@ -42,7 +42,11 @@ class Plan30Service:
         return utcnow().astimezone(self._tz()).date()
 
     def _load(self) -> Optional[Plan30]:
-        return Plan30.load(self.sup.store)
+        plan = Plan30.load(self.sup.store)
+        if plan is not None and self.sup.config.report.risk_percent > 0:
+            # The rule check follows the risk % in force now (/risk can change it).
+            plan.risk = self.sup.config.report.risk_percent / 100.0
+        return plan
 
     def _value_of(self, epic: str) -> Optional[float]:
         if epic not in self._values:

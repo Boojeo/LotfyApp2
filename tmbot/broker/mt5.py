@@ -12,9 +12,9 @@ holds the connection to the broker. So:
 
 Positions are identified by their MT5 ticket, used here as the deal id.
 
-This adapter never opens a position. Partial closes are done natively, by
-sending an opposite deal that names the position's ticket, so no opening
-order is ever needed.
+Partial closes are done natively, by sending an opposite deal that names the
+position's ticket. ``open_position`` exists only for the automatic trading mode
+(``auto`` settings, off by default); nothing else calls it.
 """
 
 from __future__ import annotations
@@ -713,10 +713,53 @@ class MT5Broker(BrokerAdapter):
         stop_level: Optional[float] = None,
         profit_level: Optional[float] = None,
     ) -> str:
-        raise NotSupportedError(
-            "the bot never opens positions; on MetaTrader 5 partial closes go "
-            "through the position's own ticket instead"
-        )
+        """Open one market deal with its stop and target attached.
+
+        Only the automatic trading mode calls this. A requote or a refused fill
+        type is retried (the order was *not* executed); anything else is raised
+        as it is. A timeout is never retried here -- whether the order reached
+        the server is unknown, so the caller re-reads the positions first.
+        """
+        if size <= 0:
+            raise PermanentError(f"open {epic}: refusing a non-positive size ({size})")
+        self._ensure_account()
+        rules = self._rules_cache.get(epic) or self.market_rules(epic)
+        volume = round(rules.round_size(size), max(_decimals(rules.size_step or 0.01), 2))
+        if volume <= 0:
+            raise PermanentError(f"open {epic}: {size} is below the minimum lot")
+        buying = direction is Direction.BUY
+
+        refused: Optional[Exception] = None
+        for filling in self._filling_modes(epic):
+            for _ in range(3):
+                tick = self.quote(epic)
+                request = {
+                    "action": TRADE_ACTION_DEAL,
+                    "symbol": epic,
+                    "volume": volume,
+                    "type": ORDER_TYPE_BUY if buying else ORDER_TYPE_SELL,
+                    "price": tick.ask if buying else tick.bid,
+                    "sl": float(stop_level) if stop_level is not None else 0.0,
+                    "tp": float(profit_level) if profit_level is not None else 0.0,
+                    "deviation": int(self.config.mt5.deviation_points),
+                    "type_time": ORDER_TIME_GTC,
+                    "type_filling": filling,
+                    "comment": "tmbot auto",
+                }
+                try:
+                    result = self._send(request, f"open {direction.value} {volume} {epic}")
+                except (PermanentError, RetryableError) as exc:
+                    retcode = getattr(exc, "retcode", None)
+                    if retcode in PRICE_RETRY:
+                        refused = exc
+                        continue
+                    if retcode == INVALID_FILL:
+                        refused = exc
+                        break
+                    raise
+                return str(_field(result, "order", "") or _field(result, "deal", "") or "")
+        assert refused is not None
+        raise refused
 
     def confirm(self, deal_reference: str) -> Dict[str, Any]:
         # order_send() is synchronous: its retcode already was the confirmation.
