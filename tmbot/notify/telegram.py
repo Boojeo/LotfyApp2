@@ -83,6 +83,24 @@ class TelegramNotifier(Notifier):
         if caption:
             self.send(caption, level=level)
 
+    def send_document(self, path: str, caption: str = "", *, level: str = "info") -> None:
+        """Upload a file.  Falls back to saying where it is if the upload fails."""
+        text = f"{self.PREFIX.get(level, '')}{self.decorate(caption)}"[:1000]
+        try:
+            with open(path, "rb") as handle:
+                response = self._http.post(
+                    f"{self._base}/sendDocument",
+                    data={"chat_id": self.config.chat_id, "caption": text},
+                    files={"document": handle},
+                    timeout=self.config.timeout * 2,
+                )
+            if response.status_code < 400:
+                return
+            log.warning("telegram sendDocument failed: %s", response.text[:200])
+        except (OSError, requests.RequestException) as exc:
+            log.warning("telegram sendDocument error: %s", exc)
+        self.send(f"{caption}\n[file: {path}]", level=level)
+
     # ------------------------------------------------------------------ commands
 
     def register(self, command: str, handler: CommandHandler) -> None:

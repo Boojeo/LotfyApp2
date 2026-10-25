@@ -22,6 +22,7 @@ from ..analysis import chart as chart_module
 from ..analysis import journal as journal_module
 from ..analysis import risk as risk_module
 from ..analysis import style as style_module
+from .plan30_service import Plan30Service
 from ..analysis.report import (
     ReportBuilder,
     render_full,
@@ -93,8 +94,10 @@ class Supervisor:
     _candles: Dict[str, _CachedCandles] = field(default_factory=dict, init=False)
     _quotes: Dict[str, Quote] = field(default_factory=dict, init=False)
     _degraded: bool = field(default=False, init=False)
+    plan30: Plan30Service = field(default=None, init=False)
 
     def __post_init__(self) -> None:
+        self.plan30 = Plan30Service(self)
         # A language chosen with /lang outlives a restart; config is the default.
         stored = self.store.get(LANGUAGE_KEY)
         self.t = Translator(stored if stored in LANGUAGES else self.config.language)
@@ -1038,6 +1041,7 @@ class Supervisor:
     def _run_schedules(self) -> None:
         self._maybe_daily_report()
         self._maybe_intraday_refresh()
+        self.plan30.step()
 
     def _report_timezone(self):
         # Validated at startup, so this cannot silently become UTC.
@@ -1203,6 +1207,7 @@ class Supervisor:
         self.notifier.register("plan", self.plan_command)
         self.notifier.register("full", self.full_command)
         self.notifier.register("short", self.short_command)
+        self.notifier.register("plan30", self.plan30.command)
         self.notifier.register("auto", self.auto_command)
         self.notifier.register("now", self.now_command)
         self.notifier.register("live", self.now_command)

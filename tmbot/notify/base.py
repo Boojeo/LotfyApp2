@@ -39,6 +39,10 @@ class Notifier(ABC):
         if caption:
             self.send(caption, level=level)
 
+    def send_document(self, path: str, caption: str = "", *, level: str = "info") -> None:
+        """Send a file.  Transports without one say where it was saved."""
+        self.send(f"{caption}\n[file: {path}]" if caption else f"[file: {path}]", level=level)
+
     def set_translator(self, t: Translator) -> None:
         """Adopt the active display language.  Called again after /lang."""
 
@@ -64,6 +68,10 @@ class NullNotifier(Notifier):
     def __init__(self) -> None:
         self.messages: List[tuple[str, str]] = []
         self.photos: List[tuple[str, str]] = []
+        self.documents: List[tuple[str, str]] = []
+
+    def send_document(self, path: str, caption: str = "", *, level: str = "info") -> None:
+        self.documents.append((path, caption))
 
     def send(self, message: str, *, level: str = "info") -> None:
         self.messages.append((level, self.decorate(message)))
@@ -100,6 +108,13 @@ class MultiNotifier(Notifier):
             except Exception:
                 log.exception("notifier %s failed to send a photo",
                               type(notifier).__name__)
+
+    def send_document(self, path: str, caption: str = "", *, level: str = "info") -> None:
+        for notifier in self.notifiers:
+            try:
+                notifier.send_document(path, caption, level=level)
+            except Exception:
+                log.exception("notifier %s failed to send a file", type(notifier).__name__)
 
     def set_translator(self, t: Translator) -> None:
         for notifier in self.notifiers:
