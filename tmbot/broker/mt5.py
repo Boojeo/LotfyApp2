@@ -765,6 +765,25 @@ class MT5Broker(BrokerAdapter):
         # order_send() is synchronous: its retcode already was the confirmation.
         return {"dealReference": deal_reference, "dealStatus": "ACCEPTED"}
 
+    def calc_loss(
+        self, epic: str, direction: Direction, volume: float, entry: float, stop: float
+    ) -> Optional[float]:
+        """MetaTrader 5's own loss for ``volume`` from ``entry`` to ``stop`` (``order_calc_profit``).
+
+        The terminal applies the symbol's real contract size, tick value and the
+        current account-currency conversion, so this is the independent figure
+        the bot's own ``tick_value / tick_size`` maths is checked against.
+        """
+        action = ORDER_TYPE_BUY if direction is Direction.BUY else ORDER_TYPE_SELL
+        try:
+            profit = self._call(f"order_calc_profit {epic}", "order_calc_profit",
+                                action, self._name(epic), float(volume), float(entry),
+                                float(stop), allow_empty=True)
+        except (PermanentError, RetryableError) as exc:
+            log.warning("order_calc_profit unavailable for %s: %s", epic, exc)
+            return None
+        return None if profit is None else round(-float(profit), 8)
+
     def closing_price(self, deal_id: str) -> Optional[float]:
         details = self.closing_details(deal_id)
         return details["price"] if details else None

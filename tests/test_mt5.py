@@ -180,6 +180,14 @@ class FakeMT5:
         return SimpleNamespace(retcode=10009, comment="done", order=self._next_deal,
                                deal=self._next_deal, request_id=8)
 
+    contract = 100.0                 # ounces per lot in this fake's gold
+
+    def order_calc_profit(self, action, symbol, volume, price_open, price_close):
+        if symbol not in self.symbols:
+            return None
+        sign = 1 if action == 0 else -1
+        return (price_close - price_open) * volume * self.contract * sign
+
     def history_deals_get(self, position=None, ticket=None, **kwargs):
         if ticket is not None:
             return tuple(deal for deal in self.history if deal.ticket == ticket)

@@ -108,8 +108,36 @@ class AffordService:
         order = sorted(results, key=lambda r: (not r.affordable, r.unaffordable is False, r.epic))
         for r in order:
             lines.append(self._line(r))
+        checks = [self._check_line(r) for r in order]
+        checks = [c for c in checks if c]
+        if checks:
+            lines.append(t("afford.check_head"))
+            lines += checks
         lines.append(t("afford.note"))
         return "\n".join(lines)
+
+    # a cross-check against the broker's own calculator; informational only
+    TOLERANCE = 0.01
+
+    def _check_line(self, r: Afford) -> str:
+        """Compare the bot's loss figure with the broker's own, when it has one."""
+        if not r.known:
+            return ""
+        from ..models import Direction
+        try:
+            quote = self.sup.broker.quote(r.epic)
+            entry = quote.mid
+            theirs = self.sup.broker.calc_loss(
+                r.epic, Direction.BUY, r.min_lot, entry, entry - r.tight_stop)
+        except Exception:
+            return ""
+        if theirs is None:
+            return ""
+        ours = r.tight_stop * r.value * r.min_lot       # no spread, slippage or commission
+        gap = abs(ours - theirs) / theirs if theirs else 0.0
+        key = "afford.check_ok" if gap <= self.TOLERANCE else "afford.check_bad"
+        return self.t(key, epic=r.epic, lot=f"{r.min_lot:g}", stop=f"{r.tight_stop:.5g}",
+                      theirs=f"{theirs:,.4f}", ours=f"{ours:,.4f}", gap=f"{gap * 100:.2f}")
 
     def _line(self, r: Afford) -> str:
         t = self.t

@@ -345,6 +345,38 @@ Automatic trading skips instruments known not to fit instead of analysing and
 rejecting them every scan (and tells you once a day if none fits); an instrument
 whose contract value, lot or ATR is unknown is never skipped.
 
+## Why are opportunities rejected? (`/why` and `audit`)
+
+Two read-only tools, built so the answer comes from YOUR data and not from a guess.
+
+* **`/why [symbol] [days]`** (Telegram) counts, over the plans the bot has already
+  stored, what stopped each one: the manual verdict's reason, the first check that
+  would stop automatic mode (in the exact order it runs them), which entry-quality
+  warnings are present how often, how many plans reach the strength automatic mode
+  needs, and a per-instrument breakdown. It counts decisions; it cannot say whether
+  they were right.
+* **`python -m tmbot audit [epic] [--bars N] [--step K] [--horizon H] [--equity X]`**
+  replays the bot's real decision pipeline over your actual broker history, using
+  only candles up to each past moment, then measures what price did next (did TP1,
+  TP2, TP3 come before the stop?). It groups the results by verdict, signal
+  strength, higher-timeframe alignment, and by each quality warning present vs
+  absent, so you can see which filters really separate good setups from bad ones
+  and which only remove opportunities. `--equity` lets you ask "what if the account
+  held X": a large value isolates trade quality from affordability, a small one
+  shows what a small account loses to the minimum lot. It runs on a read-only view
+  of the broker with no order functions, so it cannot place or touch a trade.
+  Limits: plan levels only (no spread on exit, no trailing or break-even), samples
+  overlap, past is not future. Never run it on generated data and trust the answer:
+  the result depends on how persistent the generator's trends are.
+
+`/afford` also cross-checks the bot's loss figure against MetaTrader 5's own
+`order_calc_profit` (contract size, tick value and currency conversion as the
+terminal applies them) and flags a difference above 1 %.
+
+`llm.enabled` is now `false` by default: the only place the bot calls Claude is the
+news summary, which costs tokens. Turn it on only if you set a news source and an
+`ANTHROPIC_API_KEY`.
+
 ## Install
 
 ```bash

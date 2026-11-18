@@ -144,6 +144,17 @@ class BrokerAdapter(ABC):
         """
         return None
 
+    def calc_loss(
+        self, epic: str, direction: Direction, volume: float, entry: float, stop: float
+    ) -> Optional[float]:
+        """The broker's OWN figure for what ``volume`` loses from ``entry`` to ``stop``.
+
+        A positive amount in account currency, or None when this broker has no
+        such calculator.  Used only to cross-check the bot's own loss maths
+        (MetaTrader 5 provides ``order_calc_profit``); never used to size a trade.
+        """
+        return None
+
     def closing_price(self, deal_id: str) -> Optional[float]:
         """The price a position that is no longer open was actually closed at.
 

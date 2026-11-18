@@ -119,6 +119,21 @@ class Store:
         rows = self._query("SELECT payload FROM plans WHERE plan_id = ?", (plan_id,))
         return TradePlan.from_dict(json.loads(rows[0]["payload"])) if rows else None
 
+    def plans_since(self, since: datetime, epic: Optional[str] = None) -> List[TradePlan]:
+        """Every plan built since ``since``, oldest first -- the evaluation history."""
+        sql = "SELECT payload FROM plans WHERE created_at >= ?"
+        params: List[Any] = [since.isoformat()]
+        if epic:
+            sql += " AND epic = ?"
+            params.append(epic)
+        out = []
+        for row in self._query(sql + " ORDER BY created_at", params):
+            try:
+                out.append(TradePlan.from_dict(json.loads(row["payload"])))
+            except (ValueError, KeyError):
+                continue
+        return out
+
     def latest_plan(self, epic: str, *, max_age_hours: Optional[float] = None) -> Optional[TradePlan]:
         rows = self._query(
             "SELECT payload, created_at FROM plans WHERE epic = ? ORDER BY created_at DESC LIMIT 1",

@@ -50,6 +50,24 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("epic", nargs="?", help="epic to analyse (default: the whole watchlist)")
     report.add_argument("--markdown", action="store_true", help="print the full markdown report")
 
+    audit = sub.add_parser(
+        "audit",
+        help="replay past decisions on real history and measure what happened next "
+             "(read-only: it cannot place orders)",
+    )
+    audit.add_argument("epic", nargs="?", help="epic to audit (default: the first in the watchlist)")
+    audit.add_argument("--bars", type=int, default=3000,
+                       help="candles of history per timeframe to fetch (the broker may give fewer)")
+    audit.add_argument("--step", type=int, default=12,
+                       help="evaluate every N M15 bars (default 12 = every 3 hours)")
+    audit.add_argument("--horizon", type=int, default=None,
+                       help="bars each decision is followed (default: exit_advice.horizon_bars)")
+    audit.add_argument("--equity", type=float, default=None,
+                       help="pretend the account holds this much (default: the real equity); "
+                            "a large value isolates trade quality from affordability")
+    audit.add_argument("--limit", type=int, default=None,
+                       help="only the most recent N decisions (default: all)")
+
     markets = sub.add_parser(
         "markets", help="search for an instrument to find the epic name to use"
     )
@@ -589,6 +607,36 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.command == "status":
             supervisor = Supervisor(broker, store, config, notifier)
             print(supervisor.status_text())
+            return 0
+
+        if args.command == "audit":
+            from .analysis import replay as replay_module
+            from .i18n import Translator
+
+            epic = config.canonical_epic(args.epic) if args.epic else (
+                config.analysis.watchlist[0].epic if config.analysis.watchlist else "")
+            if not epic:
+                print("no epic given and the watchlist is empty", file=sys.stderr)
+                return 2
+            print(f"fetching up to {args.bars} candles per timeframe for {epic} ...", file=sys.stderr)
+            histories = replay_module.fetch_histories(broker, epic, args.bars)
+            counts = {tf: len(bars) for tf, bars in histories.items()}
+            print(f"history received: {counts}", file=sys.stderr)
+            replay_broker = replay_module.ReplayBroker(broker, histories, equity=args.equity)
+            horizon = args.horizon or config.exit_advice.horizon_bars
+            records = replay_module.replay(
+                ReportBuilder(replay_broker, config), replay_broker, epic, step=max(1, args.step),
+                horizon=horizon, min_strength=config.auto.min_signal_strength,
+                t=Translator("en"), limit=args.limit,
+                progress=lambda done, total: print(f"\r  replaying {done}/{total}", end="",
+                                                   file=sys.stderr, flush=True),
+            )
+            print(file=sys.stderr)
+            if not records:
+                print("not enough history to replay (need more than 300 M15 candles)", file=sys.stderr)
+                return 1
+            print(replay_module.render(replay_module.summarise(records), epic=epic,
+                                       step=args.step, horizon=horizon, equity=args.equity))
             return 0
 
         if args.command == "report":

@@ -642,6 +642,7 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "/targets <id> 2|3  T1-T2 only, or back to T1-T2-T3\n"
             "/protect [id]      what is on the broker's server vs what needs the app\n"
             "/afford [symbol]   which instruments your account can afford, and the equity needed\n"
+            "/why [symbol] [days]  what has been stopping opportunities, from your own history\n"
             "/auto_on /auto_off turn automatic trading on or off\n"
             "/auto_status       automatic trading state and latest decisions\n"
             "/risk [1|2|3]      show or set the risk per trade (% of equity)\n"
@@ -673,6 +674,7 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "‎/targets <id> 2|3‎  الهدفان 1 و2 فقط، أو العودة إلى الأهداف الثلاثة\n"
             "‎/protect [id]‎      ما هو على خادم الوسيط وما يحتاج التطبيق\n"
             "‎/afford [symbol]‎   الأدوات التي يتحملها حسابك ورأس المال اللازم\n"
+            "‎/why [symbol] [days]‎  ما الذي يوقف الفرص، من سجلك أنت\n"
             "‎/auto_on /auto_off‎ تشغيل أو إيقاف التداول الآلي\n"
             "‎/auto_status‎       حالة التداول الآلي وآخر القرارات\n"
             "‎/risk [1|2|3]‎      عرض أو ضبط المخاطرة للصفقة (% من رأس المال)\n"
@@ -1023,15 +1025,22 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "✅ Risk per trade set to {risk}% of equity.",
         "ar": "✅ تم ضبط المخاطرة للصفقة على {risk}% من رأس المال.",
     },
+    "risk.source_saved": {
+        "en": "chosen with /risk and saved in the database (config.yaml says {config}%; the "
+              "saved choice wins)",
+        "ar": "اخترتها بـ ‎/risk‎ ومحفوظة في قاعدة البيانات (config.yaml يقول {config}%؛ "
+              "المحفوظة هي المعتمدة)",
+    },
+    "risk.source_config": {"en": "from config.yaml", "ar": "من config.yaml"},
     "risk.cmd_higher": {
         "en": "⚠️ {risk}% is a higher-risk setting. Your choice; /risk 1 returns to the default.",
         "ar": "⚠️ {risk}% إعداد أعلى مخاطرة. هذا اختيارك؛ ‎/risk 1‎ يعيد الافتراضي.",
     },
     "risk.cmd_status": {
-        "en": "🎯 Risk per trade: {risk}% of equity = {money} (equity {equity}).\n"
+        "en": "🎯 Risk per trade: {risk}% of equity = {money} (equity {equity}) — {source}.\n"
               "Costs counted in the lot size: commission {commission} per lot, slippage "
               "{slippage}, plus half the spread. Change with /risk 1|2|3.",
-        "ar": "🎯 المخاطرة للصفقة: {risk}% من رأس المال = {money} (رأس المال {equity}).\n"
+        "ar": "🎯 المخاطرة للصفقة: {risk}% من رأس المال = {money} (رأس المال {equity}) — {source}.\n"
               "التكاليف المحسوبة في حجم اللوت: عمولة {commission} لكل لوت، انزلاق {slippage}، "
               "ونصف الفارق السعري. للتغيير ‎/risk 1|2|3‎.",
     },
@@ -1856,6 +1865,26 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "afford.why.no_lot": {"en": "no minimum lot known", "ar": "الحد الأدنى للوت غير معروف"},
     "afford.why.no_atr": {"en": "no price history for the ATR", "ar": "لا يوجد تاريخ أسعار لحساب ATR"},
     "afford.why.no_equity": {"en": "no account equity", "ar": "لا يوجد رأس مال للحساب"},
+    "afford.check_head": {
+        "en": "Cross-check with the broker's own profit calculator (order_calc_profit), at the "
+              "tightest stop, before spread and commission:",
+        "ar": "مطابقة مع حاسبة الربح الخاصة بالوسيط (order_calc_profit) عند أضيق وقف، قبل "
+              "الفارق والعمولة:",
+    },
+    "afford.check_ok": {
+        "en": "  ✅ {epic}: {lot} lot, stop {stop}: the broker says it loses {theirs}; the bot's "
+              "figure is {ours} ({gap}% apart)",
+        "ar": "  ✅ {epic}: {lot} لوت، وقف {stop}: يقول الوسيط إنه يخسر {theirs}؛ رقم البوت "
+              "{ours} (فرق {gap}%)",
+    },
+    "afford.check_bad": {
+        "en": "  ⚠️ {epic}: {lot} lot, stop {stop}: the broker says it loses {theirs} but the "
+              "bot's figure is {ours} ({gap}% apart) — the bot's contract value for this "
+              "instrument may be wrong; do not trust its lot sizes for it until this is explained",
+        "ar": "  ⚠️ {epic}: {lot} لوت، وقف {stop}: يقول الوسيط إنه يخسر {theirs} بينما رقم البوت "
+              "{ours} (فرق {gap}%) — قد تكون قيمة العقد لدى البوت لهذه الأداة خاطئة؛ لا تثق بأحجام "
+              "اللوت لها حتى يُفسَّر ذلك",
+    },
     "afford.note": {
         "en": "This changes no rule: the risk limit, the minimum lot, the stop and the risk % "
               "are exactly as before. It only shows in advance what they will do. Automatic "
@@ -1887,6 +1916,64 @@ CATALOG: Dict[str, Dict[str, str]] = {
               "وقف) لذلك لا يوجد ما يتداوله التداول الآلي. ‎/afford‎ يعرض كل أداة ورأس المال "
               "اللازم. لم يتغير شيء.",
     },
+    # /why: what has been stopping opportunities.
+    "why.none": {
+        "en": "No evaluations are stored for the last {days} days yet.",
+        "ar": "لا توجد تقييمات محفوظة لآخر {days} أيام بعد.",
+    },
+    "why.heading": {
+        "en": "🔎 Why opportunities were not taken — last {days} days: {n} evaluations, "
+              "{epics} instrument(s)",
+        "ar": "🔎 لماذا لم تؤخذ الفرص — آخر {days} أيام: {n} تقييمًا، {epics} أداة",
+    },
+    "why.verdicts": {
+        "en": "Manual verdicts: APPROVED {a} ({ap}) · CAUTION {c} ({cp}) · REJECTED {r} ({rp})",
+        "ar": "أحكام الوضع اليدوي: مقبولة {a} ({ap}) · بحذر {c} ({cp}) · مرفوضة {r} ({rp})",
+    },
+    "why.neutral": {
+        "en": "No clear direction at all: {n} ({p})", "ar": "بلا اتجاه واضح أصلًا: {n} ({p})",
+    },
+    "why.auto_head": {
+        "en": "What stopped automatic mode (the first check that failed, in the order they run; "
+              "minimum strength {minimum}):",
+        "ar": "ما أوقف الوضع الآلي (أول فحص فشل، بترتيب تشغيلها؛ الحد الأدنى للقوة {minimum}):",
+    },
+    "why.manual_head": {
+        "en": "What the report's verdict gave as its reason:",
+        "ar": "السبب الذي ذكره حكم التقرير:",
+    },
+    "why.row": {"en": "  {rank}. {reason} — {n} ({p})", "ar": "  {rank}. {reason} — {n} ({p})"},
+    "why.flags": {
+        "en": "Entry-quality warnings present in these plans: {flags}",
+        "ar": "تحذيرات جودة الدخول الموجودة في هذه الخطط: {flags}",
+    },
+    "why.strength": {
+        "en": "Signal strength of directional plans: median {median}, best {top}; {ok} of {d} "
+              "reach the {minimum} that automatic mode needs",
+        "ar": "قوة الإشارة للخطط ذات الاتجاه: الوسيط {median}، الأعلى {top}؛ {ok} من {d} تبلغ "
+              "{minimum} المطلوبة للوضع الآلي",
+    },
+    "why.per_epic": {"en": "Per instrument:", "ar": "لكل أداة:"},
+    "why.epic_row": {
+        "en": "  {epic}: {n} evaluations, {a} approved; most common blocker: {top} ({tn})",
+        "ar": "  {epic}: {n} تقييمًا، {a} مقبولة؛ أكثر عائق: {top} ({tn})",
+    },
+    "why.note": {
+        "en": "This counts decisions; it does not say whether they were right. "
+              "`python -m tmbot audit` measures what happened afterwards on past candles.",
+        "ar": "هذا يعدّ القرارات ولا يقول إن كانت صائبة. الأمر `python -m tmbot audit` يقيس ما "
+              "حدث بعدها على الشموع السابقة.",
+    },
+    "why.gate.pass": {"en": "passed every plan-level check", "ar": "اجتازت كل فحوص الخطة"},
+    "why.gate.no_direction": {"en": "no clear direction", "ar": "لا اتجاه واضح"},
+    "why.gate.against_bias": {"en": "levels against the analysis", "ar": "المستويات ضد التحليل"},
+    "why.gate.not_approved": {"en": "verdict is not APPROVED", "ar": "الحكم ليس مقبولًا"},
+    "why.gate.weak_signal": {"en": "signal strength below the minimum", "ar": "قوة الإشارة أقل من الحد"},
+    "why.gate.not_aligned": {"en": "higher timeframe not aligned", "ar": "الإطار الأعلى غير متوافق"},
+    "why.gate.risk_unchecked": {"en": "risk could not be checked", "ar": "تعذّر فحص المخاطرة"},
+    "why.gate.risk_rejected": {"en": "risk limit cannot be met", "ar": "لا يمكن الالتزام بحد المخاطرة"},
+    "why.gate.doubtful": {"en": "flagged unsure or risky", "ar": "موسومة بعدم اليقين أو الخطر"},
+    "why.gate.entry_range": {"en": "no acceptable entry range", "ar": "لا يوجد نطاق دخول مقبول"},
     # Why a message was sent in full.
     "detail.notice": {
         "en": "ℹ️ **Full report because:** {reasons}",
@@ -1986,6 +2073,12 @@ CATALOG: Dict[str, Dict[str, str]] = {
               "{currency} | Decision: {decision}",
         "ar": "⚠️ المخاطرة {percent}% (حد الخسارة {money} {currency}) | الخسارة المقدرة عند "
               "الوقف {est} {currency} | القرار: {decision}",
+    },
+    "sm.risk_nolots": {
+        "en": "⚠️ Risk {percent}% (max loss {money} {currency}) | no lots fit: the smallest lot "
+              "({lot}) would lose {smallest} {currency} at the stop | Decision: {decision}",
+        "ar": "⚠️ المخاطرة {percent}% (حد الخسارة {money} {currency}) | لا يوجد حجم مناسب: أصغر "
+              "لوت ({lot}) سيخسر {smallest} {currency} عند الوقف | القرار: {decision}",
     },
     "sm.decision": {"en": "⚠️ Decision: {decision}", "ar": "⚠️ القرار: {decision}"},
     # Market map: gaps, Fibonacci, support/resistance families.

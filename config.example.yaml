@@ -161,7 +161,7 @@ news:
   provider: none                  # marketaux | finnhub | none
 
 llm:
-  enabled: true
+  enabled: false                  # true sends news headlines to Claude (uses your API tokens)
   model: claude-opus-5
 
 
