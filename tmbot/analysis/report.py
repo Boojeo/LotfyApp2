@@ -13,6 +13,7 @@ from ..i18n import Translator
 from ..models import Bias, Direction, TradePlan, utcnow
 from ..util.timeframes import seconds as timeframe_seconds
 from . import bias as bias_module
+from . import afford as afford_module
 from . import entry_range as entry_range_module
 from . import fundamental as fundamental_module
 from . import odds as odds_module
@@ -409,7 +410,7 @@ def _risk_text(plan: TradePlan, t: Translator) -> List[str]:
             or (plan.assessment or {}).get("verdict") == "REJECTED"
             or not sizing.get("legs"))
     if skip:
-        action = t("tr.action_skip")
+        action = _skip_text(plan, t)
     else:
         action = t("tr.action_open", deals=sizing.get("legs"), lots=sizing.get("per_leg"),
                    targets=" / ".join(sizing.get("targets") or []) or "-",
@@ -423,6 +424,9 @@ def _risk_text(plan: TradePlan, t: Translator) -> List[str]:
         t("tr.min_loss", min_lot=sizing.get("broker_min"), money=money("min_lot_money"),
           currency=currency, percent=f"{sizing.get('min_lot_percent', 0):.2f}",
           limit=t("tr.limit_exceeds" if over else "tr.limit_within")),
+        *([t("tr.min_equity", need=f"{_needs_equity(plan):,.0f}", currency=currency,
+             risk=f"{sizing.get('risk_percent', 0):g}",
+             have=f"{(sizing.get('equity') or 0):,.0f}")] if _needs_equity(plan) else []),
         t("tr.ideal_size", ideal=f"{sizing.get('ideal_volume', 0):.4f}",
           min_lot=sizing.get("broker_min")),
         t("tr.final", action=action),
@@ -670,6 +674,22 @@ def _hours_text(hours: float, t: Translator) -> str:
     return t("sm.hours_lt1") if hours < 1 else t("sm.hours", n=round(hours))
 
 
+def _needs_equity(plan: TradePlan) -> Optional[float]:
+    """Equity at which this trade's smallest-lot loss would fit the risk limit."""
+    sizing = plan.sizing or {}
+    return afford_module.minimum_equity(
+        float(sizing.get("min_lot_money") or 0.0), float(sizing.get("risk_percent") or 0.0))
+
+
+def _skip_text(plan: TradePlan, t: Translator) -> str:
+    """"Skip this trade" -- and, when the risk limit is why, the equity it would take."""
+    sizing = plan.sizing or {}
+    need = _needs_equity(plan) if sizing.get("verdict") == "REJECTED" else None
+    if need:
+        return t("tr.action_skip_needs", need=f"{need:,.0f}", currency=sizing.get("currency", ""))
+    return t("tr.action_skip")
+
+
 def _decision(plan: TradePlan, t: Translator) -> tuple:
     """(text, allowed) -- what to do with this trade, in one line."""
     sizing = plan.sizing or {}
@@ -678,7 +698,7 @@ def _decision(plan: TradePlan, t: Translator) -> tuple:
     skip = (sizing.get("verdict") == "REJECTED" or not sizing.get("legs")
             or (plan.assessment or {}).get("verdict") == "REJECTED")
     if skip:
-        return t("tr.action_skip"), False
+        return _skip_text(plan, t), False
     side = t.term("act", plan.direction.value)
     return t("sm.open", side=side, deals=sizing["legs"], lots=sizing["per_leg"]), True
 

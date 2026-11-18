@@ -328,6 +328,23 @@ Not done on purpose: an earlier, extra profit-lock ratchet. The existing
 break-even, halfway and trailing schedule is unchanged; the ATR reference and the
 MOVE STOP advice only show where a tighter stop would go.
 
+### Small accounts: what can I afford? (`/afford`)
+
+With a small account the broker's smallest lot meets the risk limit before any
+signal does: if 0.01 lot loses more at the stop than your risk % allows, every
+trade on that instrument is rejected. `/afford [symbol]` shows, per instrument,
+whether the smallest lot fits at the tightest stop the bot ever uses
+(`analysis.min_stop_atr` x ATR), the widest stop it can take, and the equity that
+instrument would need at your risk %. Reports now also state the **minimum equity
+for the trade's stop**, and a trade rejected by the risk limit says what equity it
+would take.
+
+This changes **no** rule: the minimum lot is still never forced over the limit, the
+risk % is never raised, the stop is never widened. It only tells you in advance.
+Automatic trading skips instruments known not to fit instead of analysing and
+rejecting them every scan (and tells you once a day if none fits); an instrument
+whose contract value, lot or ATR is unknown is never skipped.
+
 ## Install
 
 ```bash

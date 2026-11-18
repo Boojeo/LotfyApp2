@@ -641,6 +641,7 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "/skip <id>         cancel the advice for one deal\n"
             "/targets <id> 2|3  T1-T2 only, or back to T1-T2-T3\n"
             "/protect [id]      what is on the broker's server vs what needs the app\n"
+            "/afford [symbol]   which instruments your account can afford, and the equity needed\n"
             "/auto_on /auto_off turn automatic trading on or off\n"
             "/auto_status       automatic trading state and latest decisions\n"
             "/risk [1|2|3]      show or set the risk per trade (% of equity)\n"
@@ -671,6 +672,7 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "‎/skip <id>‎         إلغاء النصيحة لصفقة واحدة\n"
             "‎/targets <id> 2|3‎  الهدفان 1 و2 فقط، أو العودة إلى الأهداف الثلاثة\n"
             "‎/protect [id]‎      ما هو على خادم الوسيط وما يحتاج التطبيق\n"
+            "‎/afford [symbol]‎   الأدوات التي يتحملها حسابك ورأس المال اللازم\n"
             "‎/auto_on /auto_off‎ تشغيل أو إيقاف التداول الآلي\n"
             "‎/auto_status‎       حالة التداول الآلي وآخر القرارات\n"
             "‎/risk [1|2|3]‎      عرض أو ضبط المخاطرة للصفقة (% من رأس المال)\n"
@@ -1814,6 +1816,76 @@ CATALOG: Dict[str, Dict[str, str]] = {
     "auto.reject.entry_unchecked": {
         "en": "the entry range could not be worked out, so the entry cannot be checked",
         "ar": "تعذّر حساب نطاق الدخول لذلك لا يمكن فحص الدخول",
+    },
+    # What the account can afford (/afford, report lines, automatic-mode skip).
+    "afford.none": {"en": "No instruments to check.", "ar": "لا توجد أدوات للفحص."},
+    "afford.no_equity": {
+        "en": "The account equity could not be read, so nothing can be worked out.",
+        "ar": "تعذّرت قراءة رأس مال الحساب لذلك لا يمكن الحساب.",
+    },
+    "afford.heading": {
+        "en": "💰 What your account can trade — equity {equity} USD, risk {risk}% = at most "
+              "{money} lost per trade",
+        "ar": "💰 ما يستطيع حسابك تداوله — رأس المال {equity} دولار، المخاطرة {risk}% = "
+              "حد أقصى {money} خسارة للصفقة",
+    },
+    "afford.ok": {
+        "en": "✅ {epic}: the smallest lot ({lot}) fits a stop up to {max_stop} ({n} ATR); the "
+              "tightest stop the bot uses is {tight}",
+        "ar": "✅ {epic}: أصغر لوت ({lot}) يناسب وقفًا حتى {max_stop} ({n} ATR)؛ أضيق وقف "
+              "يستخدمه البوت {tight}",
+    },
+    "afford.no": {
+        "en": "❌ {epic}: even the tightest stop the bot uses ({tight}) loses {loss} with the "
+              "smallest lot ({lot}), over your {limit} limit — needs equity of about {need} at "
+              "{risk}%",
+        "ar": "❌ {epic}: حتى أضيق وقف يستخدمه البوت ({tight}) يخسر {loss} بأصغر لوت ({lot})، "
+              "أكثر من حدك {limit} — يلزم رأس مال حوالي {need} عند {risk}%",
+    },
+    "afford.typical": {
+        "en": " | your last plan's stop ({stop}) needs about {need}",
+        "ar": " | وقف آخر خطة لك ({stop}) يلزمه حوالي {need}",
+    },
+    "afford.unknown": {
+        "en": "❔ {epic}: cannot be judged ({why}); it is not skipped",
+        "ar": "❔ {epic}: لا يمكن الحكم ({why})؛ لا يتم تخطيها",
+    },
+    "afford.why.no_value": {
+        "en": "the broker publishes no contract value", "ar": "الوسيط لا ينشر قيمة العقد",
+    },
+    "afford.why.no_lot": {"en": "no minimum lot known", "ar": "الحد الأدنى للوت غير معروف"},
+    "afford.why.no_atr": {"en": "no price history for the ATR", "ar": "لا يوجد تاريخ أسعار لحساب ATR"},
+    "afford.why.no_equity": {"en": "no account equity", "ar": "لا يوجد رأس مال للحساب"},
+    "afford.note": {
+        "en": "This changes no rule: the risk limit, the minimum lot, the stop and the risk % "
+              "are exactly as before. It only shows in advance what they will do. Automatic "
+              "trading skips the ❌ instruments instead of analysing and rejecting them.",
+        "ar": "لا يغيّر هذا أي قاعدة: حد المخاطرة وأصغر لوت والوقف ونسبة المخاطرة كما هي. "
+              "يعرض فقط مسبقًا ما ستفعله. التداول الآلي يتخطى الأدوات ❌ بدل تحليلها ورفضها.",
+    },
+    "tr.min_equity": {
+        "en": "* **Minimum equity for this stop** (smallest lot, {risk}% risk): about {need} "
+              "{currency} — you have {have}",
+        "ar": "* **أدنى رأس مال لهذا الوقف** (أصغر لوت، مخاطرة {risk}%): حوالي {need} {currency} — "
+              "لديك {have}",
+    },
+    "tr.action_skip_needs": {
+        "en": "Skip this trade — needs equity of about {need} {currency}",
+        "ar": "تجنّب هذه الصفقة — تحتاج رأس مال حوالي {need} {currency}",
+    },
+    "auto.reject.unaffordable": {
+        "en": "the account cannot afford it: the smallest lot loses {loss} at the tightest stop, "
+              "over the {limit} limit (needs about {need} equity at {risk}%, you have {equity})",
+        "ar": "الحساب لا يتحمل ذلك: أصغر لوت يخسر {loss} عند أضيق وقف، أكثر من الحد {limit} "
+              "(يلزم رأس مال حوالي {need} عند {risk}%، ولديك {equity})",
+    },
+    "auto.none_affordable": {
+        "en": "🤖 None of the instruments fits your account's risk limit (the smallest lot loses "
+              "more than the limit at the tightest stop), so automatic trading has nothing to "
+              "trade. /afford shows each one and the equity it needs. Nothing was changed.",
+        "ar": "🤖 لا توجد أداة تناسب حد المخاطرة لحسابك (أصغر لوت يخسر أكثر من الحد عند أضيق "
+              "وقف) لذلك لا يوجد ما يتداوله التداول الآلي. ‎/afford‎ يعرض كل أداة ورأس المال "
+              "اللازم. لم يتغير شيء.",
     },
     # Why a message was sent in full.
     "detail.notice": {
