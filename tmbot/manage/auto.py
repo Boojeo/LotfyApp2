@@ -78,6 +78,9 @@ class Verdict:
 class AutoTrader:
     def __init__(self, supervisor: Any):
         self.sup = supervisor
+        # What config.yaml says, before any /risk choice saved in the database
+        # replaces it at start-up.
+        self._config_risk = supervisor.config.report.risk_percent
         self._lock = threading.Lock()
         self._next_scan = 0.0
         self._cursor = 0
@@ -287,7 +290,11 @@ class AutoTrader:
         equity = self._equity()
         value = self.risk_percent()
         money = f"{equity * value / 100:,.2f}" if equity else "-"
-        return self.t("risk.cmd_status", risk=f"{value:g}", money=money,
+        saved = self.store.get("risk_percent")
+        source = (self.t("risk.source_saved", config=f"{self._config_risk:g}")
+                  if saved and float(saved) == value and value != self._config_risk
+                  else self.t("risk.source_config"))
+        return self.t("risk.cmd_status", risk=f"{value:g}", money=money, source=source,
                       equity=f"{equity:,.2f}" if equity else "-",
                       commission=f"{self.sup.config.report.commission_per_lot:g}",
                       slippage=f"{self.sup.config.report.slippage:g}")

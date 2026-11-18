@@ -292,7 +292,11 @@ class NewsConfig:
 
 @dataclass
 class LLMConfig:
-    enabled: bool = True
+    # Off by default: the only place the bot calls Claude is the news summary,
+    # and that costs tokens. Turn it on only if you set a news source AND an
+    # ANTHROPIC_API_KEY and want the summary. Off, the news section uses a
+    # built-in keyword reader and nothing is sent anywhere.
+    enabled: bool = False
     model: str = "claude-opus-5"
     api_key: str = ""
     max_tokens: int = 1200

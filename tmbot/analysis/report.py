@@ -789,9 +789,14 @@ def render_text(plan: TradePlan, t: Optional[Translator] = None, tag: str = "") 
             lines.append(t("sm.target", **line))
     sizing = plan.sizing or {}
     if sizing and sizing.get("verdict") != "UNCHECKED":
-        lines.append(t("sm.risk", percent=f"{sizing.get('risk_percent', 0):g}",
+        # With no lots (the smallest lot is already too big) the loss of "the
+        # position" is 0 -- true and useless. Say what the smallest lot would lose.
+        key = "sm.risk" if sizing.get("legs") else "sm.risk_nolots"
+        lines.append(t(key, percent=f"{sizing.get('risk_percent', 0):g}",
                        money=f"{sizing.get('max_money', 0):,.2f}",
                        est=f"{sizing.get('total_money', 0):,.2f}",
+                       smallest=f"{sizing.get('min_lot_money', 0):,.2f}",
+                       lot=sizing.get("broker_min", ""),
                        currency=sizing.get("currency", ""), decision=decision))
     else:
         lines.append(t("sm.decision", decision=decision))
