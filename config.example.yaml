@@ -237,7 +237,7 @@ exit_advice:
 # broker's server, after every change, after a reconnect and at start-up.
 protection:
   enabled: true
-  audit_seconds: 30              # between checks of every managed trade
+  audit_seconds: 2.5             # between checks of every managed trade (no extra broker requests)
   grace_seconds: 20              # after our own change, before a mismatch counts
   repair_cooldown_seconds: 60    # between repairs of the same deal
   max_repairs: 3                 # then it only alerts; it never loops against the broker

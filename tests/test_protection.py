@@ -396,7 +396,7 @@ class ConfigTests(unittest.TestCase):
         c = self.config()
         c.validate()
         self.assertTrue(c.protection.enabled)
-        self.assertEqual((c.protection.audit_seconds, c.protection.max_repairs), (30.0, 3))
+        self.assertEqual((c.protection.audit_seconds, c.protection.max_repairs), (2.5, 3))
 
     def test_bad_values_are_named(self):
         for bad in ({"protection__audit_seconds": 0}, {"protection__grace_seconds": -1},

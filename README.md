@@ -307,7 +307,9 @@ Two kinds of protection are kept apart in every message:
   extension. If the app is off they simply do not happen; nothing is closed.
 
 `protection` adds a check that the first kind is really there: after every change
-(after a short grace period), every `protection.audit_seconds`, **at start-up and
+(after a short grace period), every `protection.audit_seconds` (2.5 s by default;
+it reuses the positions already fetched each cycle, so it adds no broker requests),
+**at start-up and
 after a reconnect before monitoring resumes** (each trade is re-read from the
 broker and a summary says what was verified). A stop that is missing or looser
 than the one the bot last set is put back and confirmed on the server; a tighter

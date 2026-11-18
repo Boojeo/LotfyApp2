@@ -378,7 +378,7 @@ class ProtectionConfig:
     """Checks that the stop and target really sit on the broker's server."""
 
     enabled: bool = True
-    audit_seconds: float = 30.0        # between checks of every managed trade
+    audit_seconds: float = 2.5         # between checks of every managed trade
     grace_seconds: float = 20.0        # after our own change, before a mismatch counts
     repair_cooldown_seconds: float = 60.0   # between repairs of the same deal
     max_repairs: int = 3               # then it only alerts, it does not keep resending
