@@ -359,6 +359,32 @@ class AutoConfig:
 
 
 @dataclass
+class ExitAdviceConfig:
+    """Tested odds and exit recommendations. Advice only: nothing is executed
+    unless you confirm it in Telegram (/do, /targets)."""
+
+    enabled: bool = True
+    history_bars: int = 1000           # candles of history the odds are tested on
+    horizon_bars: int = 96             # a test trade is followed this many bars
+    min_samples: int = 30              # fewer test trades than this: no number is shown
+    advice_cooldown_minutes: float = 15.0   # between messages about the same deal
+    stale_minutes: float = 10.0        # /do refuses advice older than this
+    partial_fraction: float = 0.5      # share of the remainder a PARTIAL CLOSE takes
+                                       # (partial_close exit model only)
+
+
+@dataclass
+class ProtectionConfig:
+    """Checks that the stop and target really sit on the broker's server."""
+
+    enabled: bool = True
+    audit_seconds: float = 30.0        # between checks of every managed trade
+    grace_seconds: float = 20.0        # after our own change, before a mismatch counts
+    repair_cooldown_seconds: float = 60.0   # between repairs of the same deal
+    max_repairs: int = 3               # then it only alerts, it does not keep resending
+
+
+@dataclass
 class Config:
     broker: BrokerConfig = field(default_factory=BrokerConfig)
     management: ManagementConfig = field(default_factory=ManagementConfig)
@@ -370,6 +396,8 @@ class Config:
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     report: ReportConfig = field(default_factory=ReportConfig)
     auto: AutoConfig = field(default_factory=AutoConfig)
+    exit_advice: ExitAdviceConfig = field(default_factory=ExitAdviceConfig)
+    protection: ProtectionConfig = field(default_factory=ProtectionConfig)
     database: str = "tmbot.sqlite3"
     log_level: str = "INFO"
     dry_run: bool = False
@@ -557,6 +585,21 @@ class Config:
                 "auto.enabled needs telegram.enabled and telegram.chat_id: automatic "
                 "trading is only controlled from your own chat"
             )
+        advice = self.exit_advice
+        if advice.history_bars < 200 or advice.horizon_bars < 1 or advice.min_samples < 10:
+            raise ConfigError(
+                "exit_advice.history_bars must be at least 200, horizon_bars at least 1 "
+                "and min_samples at least 10 -- fewer test trades cannot support a number"
+            )
+        if not 0 < advice.partial_fraction < 1:
+            raise ConfigError("exit_advice.partial_fraction must be between 0 and 1")
+        if advice.advice_cooldown_minutes < 0 or advice.stale_minutes <= 0:
+            raise ConfigError("exit_advice.advice_cooldown_minutes cannot be negative and "
+                              "stale_minutes must be positive")
+        guard = self.protection
+        if guard.audit_seconds <= 0 or guard.grace_seconds < 0 or guard.max_repairs < 1:
+            raise ConfigError("protection.audit_seconds must be positive, grace_seconds "
+                              "not negative and max_repairs at least 1")
         if self.management.on_indivisible_size not in ("hold", "close_all"):
             raise ConfigError("management.on_indivisible_size must be 'hold' or 'close_all'")
 
@@ -627,6 +670,8 @@ _NESTED = {
     "TelegramConfig": TelegramConfig,
     "ReportConfig": ReportConfig,
     "AutoConfig": AutoConfig,
+    "ExitAdviceConfig": ExitAdviceConfig,
+    "ProtectionConfig": ProtectionConfig,
     "StyleConfig": StyleConfig,
 }
 

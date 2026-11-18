@@ -13,7 +13,9 @@ from ..i18n import Translator
 from ..models import Bias, Direction, TradePlan, utcnow
 from ..util.timeframes import seconds as timeframe_seconds
 from . import bias as bias_module
+from . import entry_range as entry_range_module
 from . import fundamental as fundamental_module
+from . import odds as odds_module
 from . import news as news_module
 from . import quality as quality_module
 from . import structure as structure_module
@@ -152,7 +154,53 @@ class ReportBuilder:
             assessment=assessment.to_dict(),
             market=market,
         )
+        plan.entry_zone = self._entry_zone(plan, rules, quote, sizing)
+        plan.odds = self._odds(epic, plan, profile.entry_timeframe, entry)
         return plan
+
+    def _entry_zone(self, plan: TradePlan, rules, quote, sizing) -> Dict[str, Any]:
+        """The acceptable entry range for this plan -- derived from rules that already apply."""
+        try:
+            report, analysis = self.config.report, self.config.analysis
+            legs = int((sizing or {}).get("legs") or 0)
+            return entry_range_module.build(
+                direction_sign=plan.direction.sign, reference=plan.reference_price,
+                stop=plan.sl, targets=plan.targets, atr=plan.atr, spread=quote.spread,
+                slippage=report.slippage, commission_per_lot=report.commission_per_lot,
+                value_per_point=rules.value_per_point, sizing=sizing,
+                deal_targets=DEAL_TARGETS.get(legs, ()), min_reward_risk=analysis.min_reward_risk,
+                min_stop_atr=analysis.min_stop_atr, created_at=plan.created_at,
+                valid_hours=report.intraday_refresh_hours, bias=plan.bias.value,
+            )
+        except Exception:  # an enrichment: it must never cost you the plan
+            log.exception("%s: entry range failed; continuing without it", plan.epic)
+            return {}
+
+    def _odds(self, epic: str, plan: TradePlan, timeframe: str, entry) -> Dict[str, Any]:
+        """How often each target was reached before the stop, in a historical test."""
+        advice = self.config.exit_advice
+        if not advice.enabled or plan.atr <= 0 or plan.risk <= 0:
+            return {}
+        try:
+            try:
+                history = self.broker.candles(epic, timeframe, advice.history_bars)
+            except Exception as exc:
+                log.warning("%s: no long history for the odds (%s); using what was fetched",
+                            epic, exc)
+                history = []
+            if len(history) < len(entry):
+                history = entry
+            sign = plan.direction.sign
+            result = odds_module.reach_rates(
+                history, plan.direction, plan.risk / plan.atr,
+                {f"TP{i}": (price - plan.reference_price) * sign / plan.atr
+                 for i, price in enumerate(plan.targets, start=1)},
+                horizon=advice.horizon_bars, min_samples=advice.min_samples,
+            )
+            return {**result.to_dict(), "timeframe": timeframe, "min_samples": advice.min_samples}
+        except Exception:
+            log.exception("%s: tested odds failed; continuing without them", epic)
+            return {}
 
     def _market_map(self, epic, entry, structure, price, atr_value) -> Dict[str, Any]:
         """Gaps, Fibonacci, S/R families, Wolfe, Camarilla -- enrichment only."""
@@ -310,7 +358,7 @@ def reversal_level(plan: TradePlan) -> str:
 
 
 def loss_probability(plan: TradePlan) -> float:
-    """Rough chance the stop is hit before TP1, 0..1.
+    """A heuristic score for the stop being hit before TP1, 0..1 -- NOT a probability.
 
     The baseline is the driftless random-walk answer -- stop distance over
     total distance -- which is exactly ``1 / (1 + R)`` for a TP1 of ``R``.
@@ -452,6 +500,89 @@ def _market_text(plan: TradePlan, t: Translator) -> List[str]:
     return lines
 
 
+def _entry_lines(plan: TradePlan, t: Translator) -> List[str]:
+    """The entry range and what each entry in it earns or loses (full report)."""
+    z = plan.entry_zone
+    if not z:
+        return []
+    if not z.get("valid"):
+        return [t("ez.none")]
+    digits = max(_digits(plan.reference_price), 2)
+    fmt = lambda value: f"{value:.{digits}f}"  # noqa: E731
+    lines = [t("ez.range", low=fmt(z["low"]), high=fmt(z["high"]), pref=fmt(z["preferred"]),
+               limit=t(f"ez.limit.{z['limited_by']}"))]
+    rows = z["rows"]
+    for index, row in enumerate(rows):
+        tag = ("preferred" if row["is_preferred"] else "best" if index == 0
+               else "worst" if index == len(rows) - 1 else "mid")
+        if z["have_lots"]:
+            profits = " · ".join(f"TP{n} {p:+,.2f}" for n, p in zip(z["deal_targets"], row["profits"]))
+            lines.append(t("ez.row_money", tag=t(f"ez.tag.{tag}"), entry=fmt(row["entry"]),
+                           loss=f"{row['loss']:,.2f}", profits=profits,
+                           total=f"{row['profit_total']:+,.2f}",
+                           rr="-" if row["rr_basket"] is None else f"{row['rr_basket']:.2f}",
+                           currency=z["currency"]))
+        else:
+            lines.append(t("ez.row_rr", tag=t(f"ez.tag.{tag}"), entry=fmt(row["entry"]),
+                           rr=" · ".join(f"TP{i} {v:.2f}" for i, v in enumerate(row["rr"], 1))))
+    lines.append(t("ez.invalid", hours=f"{z['valid_hours'] or 4:g}",
+                   minimum=f"{z['min_reward_risk']:g}"))
+    if z["have_lots"]:
+        lines.append(t("ez.lots", legs=z["legs"], lots=z["per_leg"]))
+    return lines
+
+
+def _odds_lines(plan: TradePlan, t: Translator) -> List[str]:
+    """How often each target was reached before the stop in a historical test."""
+    o = plan.odds
+    if not o or not o.get("reach"):
+        return []
+    reach = o["reach"]
+    if not all(r["enough"] for r in reach.values()):
+        return [t("ez.odds_none", samples=o["samples"], bars=o["bars"],
+                  minimum=plan.odds.get("min_samples", 30))]
+    pct = lambda value: f"{value * 100:.0f}%"  # noqa: E731
+    hit = " · ".join(f"{stage} {pct(r['p'])} ({pct(r['low'])}–{pct(r['high'])})"
+                     for stage, r in reach.items())
+    stop = " · ".join(f"{stage} {pct(r['q'])}" for stage, r in reach.items())
+    return [
+        t("ez.odds", hit=hit, samples=o["samples"], bars=o["bars"], tf=o.get("timeframe", ""),
+          trend=t("ez.trend_aligned" if o["conditioned"] else "ez.trend_all"),
+          horizon=o["horizon"]),
+        t("ez.odds_stop", stop=stop),
+        t("ez.odds_note"),
+    ]
+
+
+def _entry_short(plan: TradePlan, t: Translator) -> List[str]:
+    z = plan.entry_zone
+    if not z:
+        return []
+    if not z.get("valid"):
+        return [t("sm.entry_none")]
+    digits = max(_digits(plan.reference_price), 2)
+    fmt = lambda value: f"{value:.{digits}f}"  # noqa: E731
+    rows = z["rows"]
+    key = "rr_basket" if z["have_lots"] else None
+    worst = rows[-1]["rr_basket"] if key else rows[-1]["rr"][0]
+    best = rows[0]["rr_basket"] if key else rows[0]["rr"][0]
+    return [t("sm.entry_range", low=fmt(z["low"]), high=fmt(z["high"]), pref=fmt(z["preferred"]),
+              worst=f"{worst:.2f}" if worst is not None else "-",
+              best=f"{best:.2f}" if best is not None else "-")]
+
+
+def _odds_short(plan: TradePlan, t: Translator) -> List[str]:
+    o = plan.odds
+    if not o or not o.get("reach"):
+        return []
+    reach = o["reach"]
+    if not all(r["enough"] for r in reach.values()):
+        return [t("sm.odds_none")]
+    return [t("sm.odds", odds=" · ".join(f"{stage} {r['p'] * 100:.0f}%"
+                                         for stage, r in reach.items()),
+              samples=o["samples"])]
+
+
 def report_sections(plan: TradePlan, t: Translator) -> List[str]:
     """Everything under the title: verdict, reversal analysis, levels, capital."""
     style = plan.style or {}
@@ -483,6 +614,8 @@ def report_sections(plan: TradePlan, t: Translator) -> List[str]:
         t("tr.sl", value=plan.sl),
         *(t("tr.tp", n=n, price=price, r=f"{plan.reward_risk(price):.2f}")
           for n, price in enumerate(plan.targets, start=1)),
+        *_entry_lines(plan, t),
+        *_odds_lines(plan, t),
         "", "---", "",
         *_risk_text(plan, t),
     ]
@@ -617,6 +750,9 @@ def render_text(plan: TradePlan, t: Optional[Translator] = None, tag: str = "") 
     lines += _map_lines(plan, t)
     lines.append(t("sm.entry", entry=plan.reference_price, sl=plan.sl,
                    distance=f"{plan.risk:.{max(_digits(plan.reference_price), 2)}f}"))
+
+    lines += _entry_short(plan, t)
+    lines += _odds_short(plan, t)
 
     decision, allowed = _decision(plan, t)
     hours = deal_hours(plan)

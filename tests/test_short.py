@@ -50,8 +50,8 @@ class ShapeTests(unittest.TestCase):
         for shape in (UP, DOWN):
             for language in ("en", "ar"):
                 text = render_text(allowed(plan_for(shape)), Translator(language))
-                self.assertLess(len(text), 900, text)
-                self.assertLessEqual(len(text.splitlines()), 16)
+                self.assertLess(len(text), 1100, text)
+                self.assertLessEqual(len(text.splitlines()), 18)
                 for marker in ("[sm.", "[term.", "[tr.", "[mm."):
                     self.assertNotIn(marker, text)
 
@@ -69,7 +69,7 @@ class ShapeTests(unittest.TestCase):
         text = render_text(plan)
         self.assertIn("Decision: Skip this trade", text)
         self.assertNotIn("⏱ Deal", text)
-        self.assertEqual(text.count("🎯 TP"), 3)
+        self.assertEqual(len([l for l in text.splitlines() if l.startswith("🎯 TP")]), 3)
 
     def test_two_deals_close_at_tp1_and_tp3(self):
         plan = allowed(plan_for(UP))
@@ -77,7 +77,8 @@ class ShapeTests(unittest.TestCase):
         text = render_text(plan)
         self.assertIn("⏱ Deal 1 → TP1", text)
         self.assertIn("⏱ Deal 2 → TP3", text)
-        self.assertNotIn("TP2", text)
+        deal_lines = [l for l in text.splitlines() if l.startswith(("⏱", "🎯 TP"))]
+        self.assertFalse([l for l in deal_lines if "TP2" in l], "no deal closes at TP2")
 
     def test_an_old_plan_without_a_map_still_renders(self):
         plan = allowed(plan_for(UP))
@@ -105,7 +106,7 @@ class HoursTests(unittest.TestCase):
         plan = plan_for(UP)
         plan.style = {}
         self.assertIsNone(deal_hours(plan))
-        lines = [l for l in render_text(plan).splitlines() if l.startswith(("🎯", "⏱"))]
+        lines = [l for l in render_text(plan).splitlines() if l.startswith(("🎯 TP", "⏱"))]
         self.assertTrue(lines and all(l.endswith(" -") for l in lines), lines)
 
     def test_under_an_hour_is_said_so(self):
@@ -168,7 +169,7 @@ class AutoFullTests(unittest.TestCase):
             plan.tp1 = plan.reference_price + (plan.reference_price - plan.sl) * 0.2
             if plan.direction.value == "SELL":
                 plan.tp1 = plan.reference_price - (plan.sl - plan.reference_price) * 0.2
-        self.trigger(narrow_target, "chance of hitting the stop before TP1")
+        self.trigger(narrow_target, "heuristic loss-risk score")
 
     def test_a_risk_limit_that_cannot_be_met_sends_the_full_report(self):
         self.trigger(lambda p: setattr(p, "sizing", {**p.sizing, "verdict": "REJECTED"}),

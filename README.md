@@ -212,6 +212,120 @@ compliance, and a continue / reduce risk / pause suggestion. `/plan30 export`
 sends an `.xlsx` with live formulas. The daily loss limit warns once when
 reached; stopping is up to you (or to automatic mode, which stops entering).
 
+## Entry range, tested odds, exit advice and broker-side protection
+
+These are additions: nothing in the analysis, the targets, the stop, the lot
+sizing or the exit rules was changed to make room for them.
+
+### Entry range
+
+A plan has one reference price, but the fill you get is rarely exactly that. The
+plan now also states how far from it an entry can be before it breaks a rule the
+bot **already enforces** (it adds no rule):
+
+* **Worst entry:** the price where, with the lots the plan advised, the loss at
+  the stop reaches the risk limit (costs included), or where TP1 stops paying
+  `analysis.min_reward_risk` times the risk, whichever comes first.
+* **Best entry:** the price where the stop would be closer than
+  `analysis.min_stop_atr` ATRs.
+* **Preferred entry:** the reference price, the one the lots were sized on.
+
+For five prices across the range (plus the preferred one) the full report shows
+the loss at the stop, the profit at each target for the deal that closes there,
+the total and the reward/risk, using the plan's own lots, `report.slippage`,
+`report.commission_per_lot` and half the spread. The lots never change: a worse
+entry means a bigger loss at the same stop, never bigger lots, and the stop and
+targets never move.
+
+The range is **no longer valid** when: price leaves it; TP1 is already passed or
+the stop touched; a wider spread pushes the loss over the risk limit or TP1 below
+the minimum reward/risk; the plan is older than `report.intraday_refresh_hours`
+(4 h if that is 0); or a newer plan points the other way. Automatic trading
+checks this at the price an order would fill at, and refuses an entry whose range
+is no longer valid or could not be worked out.
+
+### Tested odds
+
+No probability in this feature is a constant. `analysis/odds.py` takes every bar
+of the instrument's history as a hypothetical entry in the trade's direction, puts
+the stop and each target the same distance away *in ATRs* (of that bar), follows
+the price for `exit_advice.horizon_bars`, and records which came first. A bar that
+touches both counts as the stop. The share that reached each target first is its
+**tested reach rate**, the share that hit the stop first its
+**reversal-before-target rate**, shown with a Wilson 95 % interval and the number
+of test trades. If the trend at the test entry agrees with the trade's direction
+(EMA20 vs EMA50) only those are used when there are enough, otherwise all are, and
+the message says which. Below `exit_advice.min_samples` test trades no number is
+shown at all.
+
+What it is not: a forecast. It describes how often that *geometry* worked on this
+instrument's recent past; test trades overlap in time, so the interval is a little
+optimistic. The older "heuristic loss-risk score" in the report is a different,
+fixed-rule score and is labelled as such.
+
+### Exit advice (advice only)
+
+For every managed deal the bot works out a recommendation (**HOLD, PARTIAL CLOSE,
+MOVE STOP LOSS or CLOSE**) and the reasons, and messages you when it changes:
+
+1. a confirmed reversal (the engine's own detector) while in profit → CLOSE;
+2. otherwise, for each target still ahead, the expected value of holding to it in
+   units of the risk taken (R) = P(target first) × R(target) + P(stop first) ×
+   R(stop) + P(neither) × R(now), using the tested rates. If none beats the R
+   already in hand, take it: CLOSE (PARTIAL CLOSE in the partial-close model);
+3. the *most realistic target* is the one with the best expected value, which is
+   **not** assumed to be TP3 (e.g. "TP2 is worth +1.4R, TP3 +0.9R");
+4. fading momentum (MACD histogram shrinking, DI spread narrowing) with at least
+   one reversal signal firing, while in profit → MOVE STOP to an ATR lock (the
+   reversal failsafe's own `tighten_atr`), only if it improves the stop and the
+   broker accepts that distance;
+5. otherwise HOLD, with the evidence listed (trend strength, ADX, momentum,
+   reversal signals, distance to each target).
+
+Without enough history there is no number and the advice says so.
+
+Nothing executes by itself, so the broker-side targets, TP3 extension, trailing
+stop and reversal failsafe all keep working exactly as before. You decide:
+
+| Command | What it does |
+| --- | --- |
+| `/exit [id]` | Show the advice for one deal or all of them. |
+| `/do <id>` | Apply the advice for that deal, once, through the normal close / stop path. Refused if it is older than `exit_advice.stale_minutes` or the market has changed it since you read it. |
+| `/skip <id>` | Cancel the advice for that deal until it changes. |
+| `/targets <id> 2` | **T1–T2 only:** pull the basket's final deal in to TP2 and set that take-profit on the broker; TP3 extension is switched off for it. |
+| `/targets <id> 3` | Back to **T1–T2–T3**: the plan's TP3 is restored on the broker. |
+
+### Broker-side protection
+
+Two kinds of protection are kept apart in every message:
+
+* **Broker-side** (`/protect`): the stop-loss and take-profit stored on the
+  broker's server. They stay active if the app, the computer or the internet goes
+  down. Whatever stop and target the app last set stay there.
+* **Dynamic**: what only works while the app runs: the move to break-even, the
+  halfway risk cut, the trailing stop, the reversal failsafe and the TP3
+  extension. If the app is off they simply do not happen; nothing is closed.
+
+`protection` adds a check that the first kind is really there: after every change
+(after a short grace period), every `protection.audit_seconds`, **at start-up and
+after a reconnect before monitoring resumes** (each trade is re-read from the
+broker and a summary says what was verified). A stop that is missing or looser
+than the one the bot last set is put back and confirmed on the server; a tighter
+stop is adopted, not fought; a missing target is put back; a target that differs
+is only reported, because it may be your own edit. Each repair has its own
+idempotency key, waits `repair_cooldown_seconds` between attempts and stops after
+`max_repairs`, so it cannot send duplicates or fight the broker. While `/pause` is
+on, or in `dry_run`, it only alerts. A failed repair never marks the trade ERROR.
+
+`/protect [id|verify]` shows, per deal: the stop (what it locks or risks, in R and
+money, and whether the broker confirms it), the target, what needs the app running,
+an ATR reference (where a trailing stop or a 1-ATR lock would sit now, **not
+applied**) and the loss if the stop is hit against the risk limit.
+
+Not done on purpose: an earlier, extra profit-lock ratchet. The existing
+break-even, halfway and trailing schedule is unchanged; the ATR reference and the
+MOVE STOP advice only show where a tighter stop would go.
+
 ## Install
 
 ```bash
