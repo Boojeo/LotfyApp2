@@ -53,6 +53,7 @@ PENDING_KEY = "auto_pending"        # an order sent and not yet reconciled
 WINDOW_KEY = "auto_window:"         # + epic: a basket we opened, to adopt it without asking
 LAST_KEY = "auto_last:"             # + epic:side: when we last tried to enter
 LIMIT_ALERT_KEY = "auto_limit_alert"
+NONE_AFFORDABLE_KEY = "auto_none_affordable"
 NOTIFIED_KEY = "auto_notified:"     # + epic:reason: rejection notices are throttled
 ERROR_KEY = "auto_error_notified:"
 ADOPT_WINDOW_SECONDS = 300
@@ -334,14 +335,34 @@ class AutoTrader:
         names = self.instruments()
         if not names:
             return
-        epic = names[self._cursor % len(names)]
-        self._cursor += 1
+        epic = self._next_affordable(names)
+        if epic is None:
+            return
         try:
             self.reconcile_pending()
             self.scan(epic)
         except Exception as exc:  # nothing in here may stop trade management
             log.exception("auto: scan of %s failed", epic)
             self._error(epic, f"scan failed: {exc}")
+
+    def _next_affordable(self, names: List[str]) -> Optional[str]:
+        """The next instrument in turn that this account can afford.
+
+        Instruments KNOWN not to fit (the broker's smallest lot loses more at the
+        tightest stop than the risk limit) are skipped without being analysed.
+        Unknown is never skipped. If none fits, say so once a day.
+        """
+        for _ in range(len(names)):
+            epic = names[self._cursor % len(names)]
+            self._cursor += 1
+            if self.sup.afford.unaffordable(epic) is None:
+                return epic
+        today = self._now().astimezone(self._tz()).date().isoformat()
+        if self.store.get(NONE_AFFORDABLE_KEY) != today:
+            self.store.set(NONE_AFFORDABLE_KEY, today)
+            self._event("auto_reject", "none of the instruments fits the account's risk limit")
+            self.sup.notifier.send(self.t("auto.none_affordable"), level="warn")
+        return None
 
     def scan(self, epic: str) -> Verdict:
         verdict = self.evaluate(epic)
@@ -377,6 +398,12 @@ class AutoTrader:
             return no("open_on_instrument")
         if len(positions) >= self.cfg.max_open_positions:
             return no("positions_full", count=len(positions), cap=self.cfg.max_open_positions)
+
+        fit = self.sup.afford.unaffordable(epic)
+        if fit is not None:
+            return no("unaffordable", loss=f"{fit.tight_loss:,.2f}", limit=f"{fit.max_money:,.2f}",
+                      need=f"{fit.min_equity_tight:,.0f}", equity=f"{fit.equity:,.2f}",
+                      risk=f"{fit.risk_percent:g}")
 
         try:
             plan = self.sup._plan_for(epic, force=True)

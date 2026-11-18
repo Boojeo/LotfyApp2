@@ -23,6 +23,7 @@ from ..analysis import journal as journal_module
 from ..analysis import risk as risk_module
 from ..analysis import style as style_module
 from .advisor import ExitAdvisor
+from .afford_service import AffordService
 from .auto import AutoTrader
 from .protection import ProtectionService
 from .plan30_service import Plan30Service
@@ -101,12 +102,14 @@ class Supervisor:
     auto: AutoTrader = field(default=None, init=False)
     advisor: ExitAdvisor = field(default=None, init=False)
     protection: ProtectionService = field(default=None, init=False)
+    afford: AffordService = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.plan30 = Plan30Service(self)
         self.auto = AutoTrader(self)
         self.advisor = ExitAdvisor(self)
         self.protection = ProtectionService(self)
+        self.afford = AffordService(self)
         # A language chosen with /lang outlives a restart; config is the default.
         stored = self.store.get(LANGUAGE_KEY)
         self.t = Translator(stored if stored in LANGUAGES else self.config.language)
@@ -1248,6 +1251,7 @@ class Supervisor:
         self.notifier.register("skip", self.advisor.skip_command)
         self.notifier.register("targets", self.advisor.targets_command)
         self.notifier.register("protect", self.protection.command)
+        self.notifier.register("afford", self.afford.command)
         self.notifier.register("plan30", self.plan30.command)
         self.notifier.register("auto", self.auto_command)
         self.notifier.register("now", self.now_command)
