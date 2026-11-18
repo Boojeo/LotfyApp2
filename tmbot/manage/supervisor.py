@@ -22,7 +22,9 @@ from ..analysis import chart as chart_module
 from ..analysis import journal as journal_module
 from ..analysis import risk as risk_module
 from ..analysis import style as style_module
+from .advisor import ExitAdvisor
 from .auto import AutoTrader
+from .protection import ProtectionService
 from .plan30_service import Plan30Service
 from ..analysis.report import (
     ReportBuilder,
@@ -97,10 +99,14 @@ class Supervisor:
     _degraded: bool = field(default=False, init=False)
     plan30: Plan30Service = field(default=None, init=False)
     auto: AutoTrader = field(default=None, init=False)
+    advisor: ExitAdvisor = field(default=None, init=False)
+    protection: ProtectionService = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.plan30 = Plan30Service(self)
         self.auto = AutoTrader(self)
+        self.advisor = ExitAdvisor(self)
+        self.protection = ProtectionService(self)
         # A language chosen with /lang outlives a restart; config is the default.
         stored = self.store.get(LANGUAGE_KEY)
         self.t = Translator(stored if stored in LANGUAGES else self.config.language)
@@ -135,6 +141,7 @@ class Supervisor:
         self.notifier.set_tag(f"[{self.config.broker.environment.upper()}] ")
         self.notifier.set_translator(self.t)
         self.auto.restore()
+        self.protection.full_audit("startup")
         self.notifier.start()
         account = self.broker.account_summary()
         epics = self.t.join(item.epic for item in self.config.analysis.watchlist) or "-"
@@ -179,6 +186,7 @@ class Supervisor:
         by_deal_id = {position.deal_id: position for position in positions}
         self._detect_new_positions(positions)
         self._expire_pending_confirmations()
+        self.protection.step(by_deal_id)
         self._manage_open_trades(by_deal_id)
         self._run_schedules()
 
@@ -523,7 +531,9 @@ class Supervisor:
             reason_args={"plan_id": trade.plan_id},
             profit_level=self.broker_target(trade),
         ))
-        return self.engine.apply(trade, Evaluation(decisions=decisions, blocked=[]))
+        applied = self.engine.apply(trade, Evaluation(decisions=decisions, blocked=[]))
+        self.protection.touched(trade)
+        return applied
 
     def _expire_pending_confirmations(self) -> None:
         management = self.config.management
@@ -607,11 +617,15 @@ class Supervisor:
                         len(evaluation.decisions), trade.epic,
                     )
                 self.store.save_trade(trade)
+                self.advisor.update(trade, snapshot, evaluation)
                 continue
 
             applied = self.engine.apply(trade, evaluation)
             self._maybe_alert_reversal(trade, evaluation, snapshot, price, applied)
             self.store.save_trade(trade)
+            if applied:
+                self.protection.touched(trade)
+            self.advisor.update(trade, snapshot, evaluation)
             if applied:
                 self.notifier.send(
                     self.t("action.header", epic=trade.epic, id=trade.short_id,
@@ -1025,6 +1039,9 @@ class Supervisor:
         self._degraded = False
         self.store.log_event("recovered", "broker reachable again")
         self.notifier.send(self.t("degraded.recovered"))
+        # Recover the real position states and verify the broker-side stop and
+        # target BEFORE monitoring resumes on what the bot remembers.
+        self.protection.full_audit("reconnect")
 
     def _reconcile_pending_actions(self) -> None:
         """Resolve anything that was in flight when the process last stopped."""
@@ -1226,6 +1243,11 @@ class Supervisor:
         self.notifier.register("daily_report", self.auto.daily_report_command)
         self.notifier.register("plan_status", lambda _: self.plan30.status())
         self.notifier.register("panic", self.auto.panic_command)
+        self.notifier.register("exit", self.advisor.exit_command)
+        self.notifier.register("do", self.advisor.do_command)
+        self.notifier.register("skip", self.advisor.skip_command)
+        self.notifier.register("targets", self.advisor.targets_command)
+        self.notifier.register("protect", self.protection.command)
         self.notifier.register("plan30", self.plan30.command)
         self.notifier.register("auto", self.auto_command)
         self.notifier.register("now", self.now_command)

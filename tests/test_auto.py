@@ -8,6 +8,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 
+from tmbot.analysis import entry_range as entry_range_module
 from tmbot.analysis import risk as risk_module
 from tmbot.analysis.report import ReportBuilder
 from tmbot.config import RISK_CHOICES, ConfigError
@@ -45,6 +46,11 @@ def approved_plan(epic="GOLD", direction=Direction.BUY):
     plan.sizing = {"verdict": "OK", "legs": 3, "per_leg": 0.11, "risk_percent": 1.0,
                    "max_money": 100.0, "total_money": 99.0, "currency": "USD",
                    "min_lot_money": 3.0, "targets": ["TP1", "TP2", "TP3"]}
+    plan.entry_zone = entry_range_module.build(
+        direction_sign=sign, reference=3400.0, stop=plan.sl, targets=plan.targets, atr=2.0,
+        spread=0.0, slippage=0.0, commission_per_lot=0.0, value_per_point=100.0,
+        sizing=plan.sizing, deal_targets=(1, 2, 3), min_reward_risk=0.8, min_stop_atr=0.6,
+        created_at=TUESDAY_10, valid_hours=4.0, bias=plan.bias.value)
     return plan
 
 
@@ -55,6 +61,7 @@ class Harness(unittest.TestCase):
         self.broker.set_rules(replace(RULES, epic="GOLD", value_per_point=100.0,
                                       min_deal_size=0.01, size_step=0.01))
         self.broker.account_summary = lambda: {"currency": "USD", "equity": 10_000.0}
+        self.broker.set_quote("GOLD", 3400.0, 3400.0)     # no spread: the fixture plan is sized on mid
         self.auto = self.sup.auto
         cfg = self.sup.config.auto
         cfg.enabled, cfg.instruments = True, ["GOLD"]
@@ -249,6 +256,7 @@ class GateTests(Harness):
     def test_the_limit_follows_the_days_start_not_an_old_high(self):
         self.auto.day_state()
         self.now += timedelta(days=1)                          # a new trading day
+        self.plan.entry_zone = {**self.plan.entry_zone, "created_at": self.now.isoformat()}
         self.broker.account_summary = lambda: {"currency": "USD", "equity": 9_000.0}
         self.assertTrue(self.auto.evaluate("GOLD").accepted, "a new day starts a fresh limit")
 
@@ -345,6 +353,40 @@ class GateTests(Harness):
     def test_a_market_that_is_not_tradeable_is_refused(self):
         self.broker.set_rules(replace(RULES, epic="GOLD", value_per_point=100.0, tradeable=False))
         self.assertEqual(self.auto.evaluate("GOLD").reason, "not_tradeable")
+
+    def test_the_entry_range_must_still_hold_at_the_current_price(self):
+        self.broker.set_quote("GOLD", 3405.0, 3405.0)           # price ran past TP1
+        verdict = self.auto.evaluate("GOLD")
+        self.assertEqual(verdict.reason, "entry_invalid")
+        self.assertIn("past TP1", self.t(verdict))
+        self.assertIn("outside the range", self.t(verdict))
+
+    def test_a_price_just_past_the_worst_entry_is_refused_and_inside_it_is_not(self):
+        high = self.plan.entry_zone["high"]
+        self.broker.set_quote("GOLD", high + 0.05, high + 0.05)
+        self.assertEqual(self.auto.evaluate("GOLD").reason, "entry_invalid")
+        self.broker.set_quote("GOLD", high - 0.05, high - 0.05)
+        self.assertTrue(self.auto.evaluate("GOLD").accepted)
+
+    def test_a_wider_spread_can_break_the_risk_limit_at_entry(self):
+        self.broker.set_quote("GOLD", 3400.0, 3401.6)           # mid 3400.8, spread 1.6
+        verdict = self.auto.evaluate("GOLD")
+        self.assertEqual(verdict.reason, "entry_invalid")
+
+    def test_an_expired_range_is_refused(self):
+        self.plan.entry_zone = {**self.plan.entry_zone,
+                                "created_at": (TUESDAY_10 - timedelta(hours=5)).isoformat()}
+        verdict = self.auto.evaluate("GOLD")
+        self.assertEqual(verdict.reason, "entry_invalid")
+        self.assertIn("older than 4 h", self.t(verdict))
+
+    def test_a_range_that_could_not_be_worked_out_is_not_waved_through(self):
+        self.plan.entry_zone = {}
+        self.assertEqual(self.auto.evaluate("GOLD").reason, "entry_unchecked")
+
+    def test_a_plan_with_no_acceptable_entry_is_refused(self):
+        self.plan.entry_zone = {"valid": False, "reason": "no_acceptable_entry"}
+        self.assertEqual(self.auto.evaluate("GOLD").reason, "entry_invalid")
 
     def test_the_cooldown_blocks_the_same_side_but_not_the_other(self):
         self.store.set(f"{auto_module.LAST_KEY}GOLD:BUY", (self.now - timedelta(hours=1)).isoformat())

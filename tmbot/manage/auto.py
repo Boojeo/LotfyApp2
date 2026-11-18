@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, time as time_of_day, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..analysis import entry_range as entry_range_module
 from ..analysis import plan30 as plan30_module
 from ..analysis import report as report_module
 from ..analysis import style as style_module
@@ -424,11 +425,34 @@ class AutoTrader:
             return no("data_error", error=exc)
         if not rules.tradeable:
             return no("not_tradeable")
+        entry = self._entry_gate(plan)
+        if entry is not None:
+            return no(entry[0], **(entry[1] if len(entry) > 1 else {}))
         if self._cooling_down(epic, plan.direction):
             return no("cooldown", hours=f"{self.cfg.cooldown_hours:g}")
         return Verdict(True, epic, plan=plan)
 
     # ------------------------------------------------------------------ individual guards
+
+    def _entry_gate(self, plan: TradePlan) -> Optional[tuple]:
+        """The plan's entry range must still hold at the price an order would fill at.
+
+        Returns None when it does, else (reason key, args).  A range that could not
+        be worked out is not waved through: this mode refuses what it cannot check.
+        """
+        if not plan.entry_zone:
+            return ("entry_unchecked",)
+        try:
+            quote = self.sup.broker.quote(plan.epic)
+        except Exception as exc:
+            return ("data_error", {"error": exc})
+        valid, reasons = entry_range_module.check(
+            plan.entry_zone, price=quote.mid, spread=quote.spread, now=self._now(),
+            latest_bias=plan.bias.value)
+        if valid:
+            return None
+        text = self.t.semicolon.join(self.t(f"ez.check.{key}", **args) for key, args in reasons)
+        return ("entry_invalid", {"reasons": text})
 
     def in_session(self, when: Optional[datetime] = None) -> bool:
         """True inside the configured UTC trading hours on a permitted weekday."""

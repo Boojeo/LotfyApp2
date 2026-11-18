@@ -314,6 +314,12 @@ class TradePlan:
     # Price gaps, Fibonacci, support/resistance families, Wolfe wave and
     # Camarilla pivots (see analysis.structure). Descriptive only.
     market: Dict[str, Any] = field(default_factory=dict)
+    # The acceptable entry range and what each entry in it earns or loses
+    # (see analysis.entry_range), and how often each target was reached before
+    # the stop in a historical test (see analysis.odds). Both empty on plans
+    # from before these existed.
+    entry_zone: Dict[str, Any] = field(default_factory=dict)
+    odds: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def management_timeframe(self) -> str:
@@ -360,6 +366,8 @@ class TradePlan:
             sizing=dict(self.sizing),
             assessment=dict(self.assessment),
             market=dict(self.market),
+            entry_zone=dict(self.entry_zone),
+            odds=dict(self.odds),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -386,6 +394,8 @@ class TradePlan:
             "sizing": self.sizing,
             "assessment": self.assessment,
             "market": self.market,
+            "entry_zone": self.entry_zone,
+            "odds": self.odds,
         }
 
     @classmethod
@@ -413,6 +423,8 @@ class TradePlan:
             sizing=raw.get("sizing") or {},
             assessment=raw.get("assessment") or {},
             market=raw.get("market") or {},
+            entry_zone=raw.get("entry_zone") or {},
+            odds=raw.get("odds") or {},
         )
 
 
@@ -534,6 +546,9 @@ class ManagedTrade:
     # analysis choosing another style cannot change how a running trade is
     # trailed. Empty means the configured default.
     management_timeframe: str = ""
+    # The plan's own TP3, kept when /targets 2 pulls the final target in to TP2
+    # so /targets 3 can put it back. 0 means the target was never changed.
+    tp3_plan: float = 0.0
 
     @property
     def short_id(self) -> str:
@@ -599,6 +614,7 @@ class ManagedTrade:
             "realised": self.realised,
             "note": self.note,
             "management_timeframe": self.management_timeframe,
+            "tp3_plan": self.tp3_plan,
         }
 
     @classmethod
@@ -637,6 +653,7 @@ class ManagedTrade:
             realised=float(raw.get("realised", 0.0)),
             note=raw.get("note", ""),
             management_timeframe=raw.get("management_timeframe", ""),
+            tp3_plan=float(raw.get("tp3_plan", 0.0) or 0.0),
         )
 
     @property

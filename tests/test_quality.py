@@ -99,7 +99,7 @@ class DisplayTests(unittest.TestCase):
         self.assertEqual(text.count("\n---\n"), 4)
         self.assertIn("Market Map", text)
         self.assertIn("**Expected Reversal Rate:**", text)
-        self.assertIn("**Immediate Loss Probability:**", text)
+        self.assertIn("**Immediate Loss Risk (heuristic score):**", text)
 
     def test_the_title_carries_the_environment_tag_once(self):
         from tmbot.analysis.report import ReportBuilder, render_full

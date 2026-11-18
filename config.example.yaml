@@ -219,3 +219,25 @@ auto:
   scan_minutes: 5                # between scans; each scan looks at one instrument
   cooldown_hours: 4              # the same instrument and side is not re-entered sooner
   confirm_seconds: 120           # how long a live /auto_on or /panic code lasts
+
+# TESTED ODDS AND EXIT ADVICE. Advice only: the bot tells you what the evidence
+# suggests (HOLD, PARTIAL CLOSE, MOVE STOP LOSS, CLOSE) and why; nothing is
+# executed unless you confirm it in Telegram (/do, /targets). Every probability
+# shown is a measured frequency on the instrument's own past candles.
+exit_advice:
+  enabled: true
+  history_bars: 1000             # candles of history the odds are tested on
+  horizon_bars: 96               # each test trade is followed this many bars
+  min_samples: 30                # fewer test trades than this: no number is shown
+  advice_cooldown_minutes: 15    # between messages about the same deal
+  stale_minutes: 10              # /do refuses advice older than this
+  partial_fraction: 0.5          # share a PARTIAL CLOSE takes (partial_close model only)
+
+# BROKER-SIDE PROTECTION. Checks that the stop and target really sit on the
+# broker's server, after every change, after a reconnect and at start-up.
+protection:
+  enabled: true
+  audit_seconds: 2.5             # between checks of every managed trade (no extra broker requests)
+  grace_seconds: 20              # after our own change, before a mismatch counts
+  repair_cooldown_seconds: 60    # between repairs of the same deal
+  max_repairs: 3                 # then it only alerts; it never loops against the broker

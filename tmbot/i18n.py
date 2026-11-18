@@ -636,6 +636,11 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "/full [epic]       the stored plan with every section\n"
             "/plan30            30-day growth plan: status, table, export\n"
             "/plan_status       30-day plan status\n"
+            "/exit [id]         exit advice with tested odds (HOLD / CLOSE / MOVE STOP)\n"
+            "/do <id>           apply the advice for one deal, once\n"
+            "/skip <id>         cancel the advice for one deal\n"
+            "/targets <id> 2|3  T1-T2 only, or back to T1-T2-T3\n"
+            "/protect [id]      what is on the broker's server vs what needs the app\n"
             "/auto_on /auto_off turn automatic trading on or off\n"
             "/auto_status       automatic trading state and latest decisions\n"
             "/risk [1|2|3]      show or set the risk per trade (% of equity)\n"
@@ -661,6 +666,11 @@ CATALOG: Dict[str, Dict[str, str]] = {
             "‎/full [epic]‎       الخطة المحفوظة بكل الأقسام\n"
             "‎/plan30‎            خطة النمو 30 يومًا: الحالة والجدول والتصدير\n"
             "‎/plan_status‎       حالة خطة 30 يومًا\n"
+            "‎/exit [id]‎         نصيحة الخروج بالاحتمالات المُختبَرة (احتفاظ / إغلاق / تحريك الوقف)\n"
+            "‎/do <id>‎           تنفيذ النصيحة لصفقة واحدة مرة واحدة\n"
+            "‎/skip <id>‎         إلغاء النصيحة لصفقة واحدة\n"
+            "‎/targets <id> 2|3‎  الهدفان 1 و2 فقط، أو العودة إلى الأهداف الثلاثة\n"
+            "‎/protect [id]‎      ما هو على خادم الوسيط وما يحتاج التطبيق\n"
             "‎/auto_on /auto_off‎ تشغيل أو إيقاف التداول الآلي\n"
             "‎/auto_status‎       حالة التداول الآلي وآخر القرارات\n"
             "‎/risk [1|2|3]‎      عرض أو ضبط المخاطرة للصفقة (% من رأس المال)\n"
@@ -1368,6 +1378,443 @@ CATALOG: Dict[str, Dict[str, str]] = {
     },
     "p30.done": {"en": "complete", "ar": "مكتملة"},
     "p30.in_progress_state": {"en": "in progress", "ar": "قيد التنفيذ"},
+    # Entry range, tested odds, and the one-line forms of both.
+    "ez.none": {
+        "en": "* **Entry Range:** none — the reference price already breaks the risk or "
+              "reward rule, so there is no acceptable entry",
+        "ar": "* **نطاق الدخول:** لا يوجد — سعر الدخول المرجعي يخالف قاعدة المخاطرة أو العائد "
+              "لذلك لا يوجد دخول مقبول",
+    },
+    "ez.range": {
+        "en": "* **Entry Range:** {low} – {high} (preferred {pref}) | the far end is set by: {limit}",
+        "ar": "* **نطاق الدخول:** {low} – {high} (المفضل {pref}) | الطرف الأبعد يحدده: {limit}",
+    },
+    "ez.limit.risk": {
+        "en": "the risk limit (the advised lots would lose more at the stop)",
+        "ar": "حد المخاطرة (الحجم المقترح سيخسر أكثر عند الوقف)",
+    },
+    "ez.limit.reward_risk": {
+        "en": "the minimum reward/risk of TP1", "ar": "الحد الأدنى للعائد إلى المخاطرة للهدف الأول",
+    },
+    "ez.tag.best": {"en": "best", "ar": "الأفضل"},
+    "ez.tag.worst": {"en": "worst", "ar": "الأسوأ"},
+    "ez.tag.mid": {"en": "·", "ar": "·"},
+    "ez.tag.preferred": {"en": "preferred", "ar": "المفضل"},
+    "ez.row_money": {
+        "en": "  - {tag} {entry}: loss at SL -{loss} {currency} | {profits} | total {total} | "
+              "R:R {rr}",
+        "ar": "  - {tag} {entry}: الخسارة عند الوقف -{loss} {currency} | {profits} | الإجمالي "
+              "{total} | R:R {rr}",
+    },
+    "ez.row_rr": {
+        "en": "  - {tag} {entry}: reward/risk {rr}", "ar": "  - {tag} {entry}: العائد/المخاطرة {rr}",
+    },
+    "ez.invalid": {
+        "en": "* **The range is no longer valid when:** price leaves it; TP1 is already passed or "
+              "the stop touched; a wider spread pushes the loss over the risk limit or TP1 below "
+              "{minimum}R; the plan is older than {hours} h; or a newer plan points the other way",
+        "ar": "* **ينتهي صلاح النطاق عندما:** يخرج السعر منه؛ أو يتجاوز السعر الهدف الأول أو يلمس "
+              "الوقف؛ أو يدفع اتساع الفارق الخسارة فوق حد المخاطرة أو الهدف الأول تحت {minimum}R؛ "
+              "أو تتجاوز الخطة {hours} ساعة؛ أو تشير خطة أحدث إلى الاتجاه المعاكس",
+    },
+    "ez.lots": {
+        "en": "* Lots are the plan's own ({legs} x {lots}) at every entry; a worse entry means a "
+              "bigger loss at the same stop, never bigger lots",
+        "ar": "* الحجم هو حجم الخطة ({legs} × {lots}) عند كل دخول؛ الدخول الأسوأ يعني خسارة أكبر "
+              "عند الوقف نفسه، وليس حجمًا أكبر",
+    },
+    "ez.odds": {
+        "en": "* **Tested odds** (reached before the stop): {hit} — {samples} test trades on "
+              "{bars} bars of {tf}, {trend}, followed {horizon} bars each",
+        "ar": "* **الاحتمالات المُختبَرة** (بلوغ الهدف قبل الوقف): {hit} — {samples} صفقة اختبار "
+              "على {bars} شمعة {tf}، {trend}، تُتابَع كل منها {horizon} شمعة",
+    },
+    "ez.odds_stop": {
+        "en": "* Stopped out first (reversal before the target): {stop}",
+        "ar": "* ضُرب الوقف أولًا (انعكاس قبل الهدف): {stop}",
+    },
+    "ez.odds_note": {
+        "en": "* These are measured frequencies on this instrument's own past candles for the "
+              "same distances in ATR. They describe the past; they are not a forecast.",
+        "ar": "* هذه نسب مقاسة على شموع هذه الأداة السابقة لنفس المسافات بوحدة ATR. تصف الماضي "
+              "وليست توقعًا.",
+    },
+    "ez.odds_none": {
+        "en": "* **Tested odds:** not enough history ({samples} test trades on {bars} bars; "
+              "at least {minimum} are needed), so no number is shown",
+        "ar": "* **الاحتمالات المُختبَرة:** التاريخ غير كافٍ ({samples} صفقة اختبار على {bars} "
+              "شمعة؛ يلزم {minimum} على الأقل) لذلك لا يُعرض رقم",
+    },
+    "ez.trend_aligned": {
+        "en": "using only entries trending the same way", "ar": "بالدخولات ذات الاتجاه المماثل فقط",
+    },
+    "ez.trend_all": {"en": "using all entries", "ar": "بكل الدخولات"},
+    "sm.entry_range": {
+        "en": "🎯 Entry {low}–{high} (prefer {pref}) | R:R {worst}→{best}",
+        "ar": "🎯 الدخول {low}–{high} (المفضل {pref}) | R:R {worst}←{best}",
+    },
+    "sm.entry_none": {
+        "en": "🎯 No acceptable entry range", "ar": "🎯 لا يوجد نطاق دخول مقبول",
+    },
+    "sm.odds": {
+        "en": "🧪 Tested odds: {odds} (n={samples})", "ar": "🧪 الاحتمالات المُختبَرة: {odds} (n={samples})",
+    },
+    "sm.odds_none": {
+        "en": "🧪 Tested odds: not enough history", "ar": "🧪 الاحتمالات المُختبَرة: التاريخ غير كافٍ",
+    },
+    # Broker-side protection and the reconnect audit.
+    "prot.header_audit": {
+        "en": "🛡 Protection check: a difference between the plan and the broker's server",
+        "ar": "🛡 فحص الحماية: اختلاف بين الخطة وخادم الوسيط",
+    },
+    "prot.header_full": {
+        "en": "🛡 Protection verified {reason}: {count} trade(s) re-read from the broker",
+        "ar": "🛡 تم التحقق من الحماية {reason}: أُعيدت قراءة {count} صفقة من الوسيط",
+    },
+    "prot.reason.startup": {"en": "at start-up", "ar": "عند التشغيل"},
+    "prot.reason.reconnect": {"en": "after the reconnect", "ar": "بعد عودة الاتصال"},
+    "prot.reason.manual": {"en": "on request", "ar": "بناءً على طلبك"},
+    "prot.audit_unreadable": {
+        "en": "🛡 Protection could not be verified {reason}: the broker's positions cannot be "
+              "read ({error}). The stop and target already on the broker's server are still "
+              "active; monitoring resumes when the connection is back.",
+        "ar": "🛡 تعذّر التحقق من الحماية {reason}: لا يمكن قراءة صفقات الوسيط ({error}). الوقف "
+              "والهدف الموجودان على خادم الوسيط يعملان؛ تستأنف المراقبة عند عودة الاتصال.",
+    },
+    "prot.gone": {
+        "en": "• {epic} [{id}]: no longer open at the broker (closed by its stop or target, or by "
+              "you) — the journal is updated by the normal check",
+        "ar": "• {epic} [{id}]: لم تعد مفتوحة عند الوسيط (أُغلقت بالوقف أو الهدف أو بيدك) — "
+              "يُحدَّث السجل بالفحص المعتاد",
+    },
+    "prot.verified": {
+        "en": "✅ {epic} [{id}]: stop {stop} and target {target} are confirmed on the broker's server",
+        "ar": "✅ {epic} [{id}]: الوقف {stop} والهدف {target} مؤكدان على خادم الوسيط",
+    },
+    "prot.adopted": {
+        "en": "• {epic} [{id}]: the broker holds a tighter stop ({level}) than the bot's — "
+              "taken as the bot's own, not overridden",
+        "ar": "• {epic} [{id}]: يحتفظ الوسيط بوقف أضيق ({level}) من وقف البوت — اعتُمد كوقف "
+              "للبوت ولم يُلغَ",
+    },
+    "prot.target_different": {
+        "en": "• {epic} [{id}]: the target on the broker is {actual}, the plan says {expected}. "
+              "Not changed — it may be your own edit.",
+        "ar": "• {epic} [{id}]: الهدف عند الوسيط {actual} والخطة تقول {expected}. لم يتغير — "
+              "قد يكون تعديلك أنت.",
+    },
+    "prot.what.stop": {"en": "stop", "ar": "الوقف"},
+    "prot.what.target": {"en": "target", "ar": "الهدف"},
+    "prot.alert_paused": {
+        "en": "⚠️ {epic} [{id}]: the {what} on the broker is {actual} but should be {expected}. "
+              "Trading is paused, so nothing was changed — fix it yourself or send /resume.",
+        "ar": "⚠️ {epic} [{id}]: {what} عند الوسيط {actual} ويجب أن يكون {expected}. التداول "
+              "متوقف مؤقتًا لذلك لم يتغير شيء — أصلحه بنفسك أو أرسل ‎/resume‎.",
+    },
+    "prot.alert_dry": {
+        "en": "⚠️ [dry run] {epic} [{id}]: the {what} on the broker is {actual} but should be "
+              "{expected}. Nothing was sent.",
+        "ar": "⚠️ [تجريبي] {epic} [{id}]: {what} عند الوسيط {actual} ويجب أن يكون {expected}. "
+              "لم يُرسل شيء.",
+    },
+    "prot.gave_up": {
+        "en": "❗ {epic} [{id}]: the {what} could not be put back after {n} attempt(s) (broker has "
+              "{actual}, should be {expected}). The bot stops retrying — set it on the broker "
+              "yourself.",
+        "ar": "❗ {epic} [{id}]: تعذّر إعادة {what} بعد {n} محاولة (عند الوسيط {actual} والمطلوب "
+              "{expected}). يتوقف البوت عن المحاولة — اضبطه على الوسيط بنفسك.",
+    },
+    "prot.repair_deferred": {
+        "en": "⚠️ {epic} [{id}]: the {what} is {actual}, should be {expected}; the repair was "
+              "deferred ({error}) and will be retried.",
+        "ar": "⚠️ {epic} [{id}]: {what} هو {actual} والمطلوب {expected}؛ أُجّل الإصلاح ({error}) "
+              "وستُعاد المحاولة.",
+    },
+    "prot.repair_refused": {
+        "en": "❗ {epic} [{id}]: the broker refused the {what} {expected}: {error}",
+        "ar": "❗ {epic} [{id}]: رفض الوسيط {what} {expected}: {error}",
+    },
+    "prot.repaired": {
+        "en": "🔧 {epic} [{id}]: the {what} was {actual}, put back to {expected} and confirmed on "
+              "the broker's server",
+        "ar": "🔧 {epic} [{id}]: كان {what} {actual}، أُعيد إلى {expected} وتأكد على خادم الوسيط",
+    },
+    "prot.repair_unconfirmed": {
+        "en": "❗ {epic} [{id}]: the {what} was sent as {expected} but the broker still shows "
+              "{actual}. Check it.",
+        "ar": "❗ {epic} [{id}]: أُرسل {what} {expected} لكن الوسيط ما زال يعرض {actual}. افحصه.",
+    },
+    "prot.nothing": {"en": "No managed trades to check.", "ar": "لا توجد صفقات مُدارة للفحص."},
+    "prot.title": {
+        "en": "🛡 {epic} [{id}] {side} {size}", "ar": "🛡 {epic} [{id}] {side} {size}",
+    },
+    "prot.broker_heading": {
+        "en": "ON THE BROKER'S SERVER (still active if the app, this computer or the internet "
+              "goes down):",
+        "ar": "على خادم الوسيط (يبقى فعّالًا إن توقف التطبيق أو الجهاز أو الإنترنت):",
+    },
+    "prot.broker_stop": {
+        "en": "  • Stop {level}: {what} {r}R{money} {state}",
+        "ar": "  • الوقف {level}: {what} {r}R{money} {state}",
+    },
+    "prot.locks": {"en": "locks in", "ar": "يؤمّن"},
+    "prot.risks": {"en": "risks", "ar": "يخاطر بـ"},
+    "prot.broker_target": {
+        "en": "  • Target {level} ({stage}) {state}", "ar": "  • الهدف {level} ({stage}) {state}",
+    },
+    "prot.state_ok": {"en": "✅ confirmed", "ar": "✅ مؤكد"},
+    "prot.state_bad": {"en": "❌ differs from the plan", "ar": "❌ يختلف عن الخطة"},
+    "prot.state_unknown": {"en": "❔ not readable now", "ar": "❔ غير مقروء الآن"},
+    "prot.offline_note": {
+        "en": "  Whatever stop and target the app last set stay here and keep protecting the "
+              "trade while the app is off.",
+        "ar": "  آخر وقف وهدف ضبطهما التطبيق يبقيان هنا ويحميان الصفقة أثناء توقف التطبيق.",
+    },
+    "prot.dynamic_heading": {
+        "en": "NEEDS THE APP RUNNING (stops while it is off):",
+        "ar": "يحتاج تشغيل التطبيق (يتوقف عند إيقافه):",
+    },
+    "prot.dyn_breakeven": {
+        "en": "  • Stop to entry when {stage} is reached ({level})",
+        "ar": "  • نقل الوقف إلى الدخول عند بلوغ {stage} ({level})",
+    },
+    "prot.dyn_risk_cut": {
+        "en": "  • Halfway risk cut at {level}: only {left} of the risk is kept",
+        "ar": "  • تخفيض المخاطرة في منتصف الطريق عند {level}: يبقى {left} فقط من المخاطرة",
+    },
+    "prot.dyn_trail": {
+        "en": "  • Trailing stop after {stage} (ATR-based, moves with the trend)",
+        "ar": "  • وقف متحرك بعد {stage} (مبني على ATR، يتحرك مع الاتجاه)",
+    },
+    "prot.dyn_reversal": {
+        "en": "  • Reversal failsafe (action: {action})",
+        "ar": "  • صمام الأمان عند الانعكاس (الإجراء: {action})",
+    },
+    "prot.dyn_extend": {
+        "en": "  • TP3 extension in a strong trend", "ar": "  • تمديد الهدف الثالث في اتجاه قوي",
+    },
+    "prot.dyn_offline": {
+        "en": "  If the app is off these simply do not happen; nothing is closed and the stop "
+              "above stays where it is.",
+        "ar": "  إن كان التطبيق متوقفًا فلن يحدث أي منها؛ لا يُغلق شيء ويبقى الوقف أعلاه مكانه.",
+    },
+    "prot.atr": {
+        "en": "ATR reference (not applied): the stop is {gap} ATR behind price (ATR {atr}); a "
+              "trailing stop now would sit at {trail}; a {tighten}-ATR lock at {lock}",
+        "ar": "مرجع ATR (غير مطبّق): الوقف على بعد {gap} ATR خلف السعر (ATR {atr})؛ الوقف المتحرك "
+              "الآن سيكون عند {trail}؛ وقفل {tighten} ATR عند {lock}",
+    },
+    "prot.limit_ok": {
+        "en": "Loss if the stop is hit: {money} — within the risk limit.",
+        "ar": "الخسارة إن ضُرب الوقف: {money} — ضمن حد المخاطرة.",
+    },
+    "prot.money_unknown": {
+        "en": "The loss in money at the stop cannot be worked out: the broker publishes no "
+              "contract value for this instrument.",
+        "ar": "لا يمكن حساب الخسارة بالمال عند الوقف: الوسيط لا ينشر قيمة العقد لهذه الأداة.",
+    },
+    "prot.limit_over": {
+        "en": "⚠️ Loss if the stop is hit: {money} per deal — the basket is OVER the risk limit "
+              "(not changed by the bot).",
+        "ar": "⚠️ الخسارة إن ضُرب الوقف: {money} للصفقة — السلة تتجاوز حد المخاطرة (لا يغيّرها البوت).",
+    },
+    # Exit advice.
+    "adv.title": {
+        "en": "🧭 Exit advice — {epic} [{id}] {side} (target {stage}), now {r}R",
+        "ar": "🧭 نصيحة الخروج — {epic} [{id}] {side} (الهدف {stage})، الآن {r}R",
+    },
+    "adv.action": {"en": "Recommendation: {action}", "ar": "التوصية: {action}"},
+    "adv.action.HOLD": {"en": "HOLD", "ar": "الاحتفاظ"},
+    "adv.action.PARTIAL_CLOSE": {"en": "PARTIAL CLOSE", "ar": "إغلاق جزئي"},
+    "adv.action.MOVE_STOP": {"en": "MOVE STOP LOSS", "ar": "تحريك وقف الخسارة"},
+    "adv.action.CLOSE": {"en": "CLOSE", "ar": "الإغلاق"},
+    "adv.detail.MOVE_STOP": {"en": "New stop: {level}", "ar": "الوقف الجديد: {level}"},
+    "adv.detail.PARTIAL_CLOSE": {"en": "Close {size} lots", "ar": "إغلاق {size} لوت"},
+    "adv.why": {"en": "Why:", "ar": "السبب:"},
+    "adv.reason.close_reversal": {
+        "en": "a trend reversal is confirmed ({agreeing} of the needed {required} independent "
+              "signals, held for several checks) while you are {r}R in profit",
+        "ar": "تأكد انعكاس الاتجاه ({agreeing} من {required} إشارات مستقلة مطلوبة، لعدة فحوصات) "
+              "وأنت في ربح {r}R",
+    },
+    "adv.reason.close_ev": {
+        "en": "in the historical test, holding to {stage} is worth {ev}R on average "
+              "({samples} test trades), less than the {now}R already in hand",
+        "ar": "في الاختبار التاريخي، الاحتفاظ حتى {stage} يساوي {ev}R في المتوسط "
+              "({samples} صفقة اختبار)، أقل من {now}R المتحقق الآن",
+    },
+    "adv.reason.realistic_target": {
+        "en": "the best-value target is {best} ({ev}R), not {far} ({far_ev}R)",
+        "ar": "الهدف الأفضل قيمة هو {best} ({ev}R) وليس {far} ({far_ev}R)",
+    },
+    "adv.reason.move_stop": {
+        "en": "momentum is fading and {agreeing} of {required} reversal signals are firing; "
+              "a stop {atr} ATR behind price at {level} locks profit",
+        "ar": "الزخم يضعف و{agreeing} من {required} إشارات انعكاس تعمل؛ وقف على بعد {atr} ATR "
+              "خلف السعر عند {level} يؤمّن الربح",
+    },
+    "adv.reason.stop_not_improved": {
+        "en": "a tighter stop at {level} would not improve on the current one (or the broker "
+              "would not accept it)",
+        "ar": "وقف أضيق عند {level} لن يحسّن الحالي (أو لن يقبله الوسيط)",
+    },
+    "adv.reason.hold": {
+        "en": "nothing in the evidence justifies acting; the stop and targets already protect "
+              "the trade ({r}R now)",
+        "ar": "لا شيء في الأدلة يبرر التصرف؛ الوقف والأهداف تحمي الصفقة ({r}R الآن)",
+    },
+    "adv.reason.evidence": {
+        "en": "evidence: {strength} trend (ADX {adx}), momentum {momentum}, reversal signals "
+              "{agreeing}/{required}, nearest target {nearest} ATR away",
+        "ar": "الأدلة: اتجاه {strength} (ADX {adx})، الزخم {momentum}، إشارات الانعكاس "
+              "{agreeing}/{required}، أقرب هدف على بعد {nearest} ATR",
+    },
+    "adv.reason.no_odds": {
+        "en": "no tested odds: only {samples} test trades on the history available (at least "
+              "{minimum} are needed), so no number is used and this rests on the evidence above",
+        "ar": "لا احتمالات مُختبَرة: {samples} صفقة اختبار فقط في التاريخ المتاح (يلزم {minimum} "
+              "على الأقل) لذلك لا يُستخدم رقم وتعتمد التوصية على الأدلة أعلاه",
+    },
+    "adv.momentum.fading": {"en": "fading", "ar": "يضعف"},
+    "adv.momentum.steady": {"en": "steady", "ar": "ثابت"},
+    "adv.target": {
+        "en": "  {stage} {level} ({dist} ATR away): reached before the stop in {p}% of test "
+              "trades ({low}–{high}%), stopped first in {q}% | worth {ev}R vs {now}R in hand "
+              "(n={n})",
+        "ar": "  {stage} {level} (على بعد {dist} ATR): بلغه قبل الوقف {p}% من صفقات الاختبار "
+              "({low}–{high}%)، وضُرب الوقف أولًا في {q}% | قيمته {ev}R مقابل {now}R متحققة "
+              "(n={n})",
+    },
+    "adv.target_none": {
+        "en": "  {stage} {level} ({dist} ATR away): no tested odds (not enough history)",
+        "ar": "  {stage} {level} (على بعد {dist} ATR): لا احتمالات مُختبَرة (التاريخ غير كافٍ)",
+    },
+    "adv.best": {
+        "en": "Most realistic target by tested value: {stage}",
+        "ar": "الهدف الأكثر واقعية حسب القيمة المُختبَرة: {stage}",
+    },
+    "adv.honest": {
+        "en": "These odds are measured frequencies on this instrument's past candles, not a "
+              "forecast. Nothing happens unless you confirm.",
+        "ar": "هذه الاحتمالات نسب مقاسة على شموع الأداة السابقة وليست توقعًا. لا يحدث شيء ما لم "
+              "تؤكد.",
+    },
+    "adv.opt_do": {"en": "▶ /do {id} — apply: {action}", "ar": "▶ ‎/do {id}‎ — تنفيذ: {action}"},
+    "adv.opt_skip": {"en": "✖ /skip {id} — cancel this advice", "ar": "✖ ‎/skip {id}‎ — إلغاء هذه النصيحة"},
+    "adv.opt_targets": {
+        "en": "🎯 /targets {id} 2 — T1–T2 only (final target pulled in to TP2) | /targets {id} 3 "
+              "— back to T1–T2–T3",
+        "ar": "🎯 ‎/targets {id} 2‎ — الهدفان 1 و2 فقط (الهدف النهائي يصبح الثاني) | "
+              "‎/targets {id} 3‎ — العودة إلى الأهداف الثلاثة",
+    },
+    "adv.nothing": {"en": "No managed trades.", "ar": "لا توجد صفقات مُدارة."},
+    "adv.unavailable": {
+        "en": "{epic} [{id}]: the advice cannot be worked out now ({error}).",
+        "ar": "{epic} [{id}]: تعذّر حساب النصيحة الآن ({error}).",
+    },
+    "adv.no_advice": {
+        "en": "No advice is waiting for {id}. Send /exit {id} first.",
+        "ar": "لا توجد نصيحة بانتظار {id}. أرسل ‎/exit {id}‎ أولًا.",
+    },
+    "adv.stale": {
+        "en": "The advice for {id} is more than {minutes} minutes old. Send /exit {id} for a "
+              "fresh one.",
+        "ar": "نصيحة {id} أقدم من {minutes} دقيقة. أرسل ‎/exit {id}‎ للحصول على نصيحة جديدة.",
+    },
+    "adv.nothing_to_do": {
+        "en": "The advice for {id} is HOLD: there is nothing to apply.",
+        "ar": "نصيحة {id} هي الاحتفاظ: لا يوجد ما يُنفَّذ.",
+    },
+    "adv.changed": {
+        "en": "The market moved: the advice for {id} is now {new}, not {old}. Nothing was done — "
+              "read it and confirm again with /do {id}.",
+        "ar": "تحرك السوق: نصيحة {id} أصبحت {new} وليست {old}. لم يتم شيء — اقرأها وأكد مجددًا "
+              "بـ ‎/do {id}‎.",
+    },
+    "adv.not_accepted": {
+        "en": "The broker did not accept it; check the logs.", "ar": "لم يقبله الوسيط؛ راجع السجلات.",
+    },
+    "adv.skipped": {
+        "en": "Advice cancelled for {id} ({action}). You will be told again only if it changes.",
+        "ar": "أُلغيت نصيحة {id} ({action}). ستُخطَر مجددًا فقط إن تغيّرت.",
+    },
+    "adv.targets_usage": {
+        "en": "/targets <id> 2 — T1–T2 only (final target pulled in to TP2)\n"
+              "/targets <id> 3 — back to T1–T2–T3",
+        "ar": "‎/targets <id> 2‎ — الهدفان 1 و2 فقط (الهدف النهائي يصبح الثاني)\n"
+              "‎/targets <id> 3‎ — العودة إلى الأهداف الثلاثة",
+    },
+    "adv.no_runner": {
+        "en": "{id} has no final-target deal to change.", "ar": "لا توجد صفقة هدف نهائي لتغييرها في {id}.",
+    },
+    "adv.targets_already": {
+        "en": "{id}: already set to {mode}.", "ar": "{id}: مضبوطة بالفعل على {mode}.",
+    },
+    "adv.targets_passed": {
+        "en": "{id}: price {price} is already at or past {level}, so a target there cannot be "
+              "set. Use /do {id} (or /close {id}) to take the profit now.",
+        "ar": "{id}: السعر {price} عند {level} أو بعده لذلك لا يمكن ضبط هدف هناك. استخدم "
+              "‎/do {id}‎ (أو ‎/close {id}‎) لأخذ الربح الآن.",
+    },
+    "adv.targets_set_2": {
+        "en": "✅ {id}: T1–T2 only. The final deal's take-profit is now {level} (TP2), set on the "
+              "broker's server. TP3 extension is off for it. /targets {id} 3 puts TP3 back.",
+        "ar": "✅ {id}: الهدفان 1 و2 فقط. هدف الصفقة الأخيرة أصبح {level} (الثاني) على خادم "
+              "الوسيط. تمديد الهدف الثالث متوقف لها. ‎/targets {id} 3‎ يعيد الثالث.",
+    },
+    "adv.targets_set_3": {
+        "en": "✅ {id}: T1–T2–T3 again. The final deal's take-profit is back to {level} (TP3) "
+              "on the broker's server.",
+        "ar": "✅ {id}: الأهداف الثلاثة من جديد. هدف الصفقة الأخيرة عاد إلى {level} (الثالث) على "
+              "خادم الوسيط.",
+    },
+    "reason.advice_stop": {
+        "en": "stop moved to {level} as advised (confirmed by you)",
+        "ar": "نُقل الوقف إلى {level} حسب النصيحة (بتأكيدك)",
+    },
+    "reason.advice_close": {
+        "en": "closed as advised (confirmed by you)", "ar": "أُغلقت حسب النصيحة (بتأكيدك)",
+    },
+    "reason.advice_target": {
+        "en": "final target set to {level} (confirmed by you)",
+        "ar": "ضُبط الهدف النهائي على {level} (بتأكيدك)",
+    },
+    # Why an entry range is no longer valid.
+    "ez.check.no_acceptable_entry": {
+        "en": "there is no acceptable entry range", "ar": "لا يوجد نطاق دخول مقبول",
+    },
+    "ez.check.stop_touched": {
+        "en": "price {price} has touched the stop {stop}", "ar": "لمس السعر {price} الوقف {stop}",
+    },
+    "ez.check.tp1_passed": {
+        "en": "price {price} is already past TP1 {tp1}", "ar": "السعر {price} تجاوز الهدف الأول {tp1}",
+    },
+    "ez.check.outside_range": {
+        "en": "price {price} is outside the range {low}–{high}",
+        "ar": "السعر {price} خارج النطاق {low}–{high}",
+    },
+    "ez.check.risk_over_limit": {
+        "en": "with today's spread the loss at the stop would be {loss}, over the {limit} limit",
+        "ar": "بفارق السعر الحالي ستكون الخسارة عند الوقف {loss} وهي أكبر من الحد {limit}",
+    },
+    "ez.check.reward_risk_low": {
+        "en": "TP1 would pay only {rr}R, below the {minimum}R minimum",
+        "ar": "الهدف الأول سيدفع {rr}R فقط وهو أقل من الحد الأدنى {minimum}R",
+    },
+    "ez.check.expired": {
+        "en": "the plan is older than {hours} h", "ar": "الخطة أقدم من {hours} ساعة",
+    },
+    "ez.check.bias_changed": {
+        "en": "the analysis changed from {old} to {new}", "ar": "تغيّر التحليل من {old} إلى {new}",
+    },
+    "auto.reject.entry_invalid": {
+        "en": "the entry range is no longer valid: {reasons}",
+        "ar": "نطاق الدخول لم يعد صالحًا: {reasons}",
+    },
+    "auto.reject.entry_unchecked": {
+        "en": "the entry range could not be worked out, so the entry cannot be checked",
+        "ar": "تعذّر حساب نطاق الدخول لذلك لا يمكن فحص الدخول",
+    },
     # Why a message was sent in full.
     "detail.notice": {
         "en": "ℹ️ **Full report because:** {reasons}",
@@ -1389,8 +1836,8 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "ar": "انعكاس ضد الصفقة محتمل",
     },
     "detail.loss": {
-        "en": "about {percent}% chance of hitting the stop before TP1",
-        "ar": "حوالي {percent}% احتمال ضرب الوقف قبل الهدف الأول",
+        "en": "heuristic loss-risk score ~{percent}% (fixed rules, not a tested probability)",
+        "ar": "درجة خطر الخسارة الإرشادية ~{percent}% (قواعد ثابتة وليست احتمالًا مُختبَرًا)",
     },
     "detail.risk_rejected": {
         "en": "the risk limit cannot be met", "ar": "لا يمكن الالتزام بحد المخاطرة",
@@ -1409,8 +1856,8 @@ CATALOG: Dict[str, Dict[str, str]] = {
     },
     "sm.verdict": {"en": "{emoji} {verdict} — {reason}", "ar": "{emoji} {verdict} — {reason}"},
     "sm.reversal": {
-        "en": "🔄 Reversal {emoji} {level} | Loss before TP1 ~{percent}%",
-        "ar": "🔄 الانعكاس {emoji} {level} | خسارة قبل الهدف الأول ~{percent}%",
+        "en": "🔄 Reversal {emoji} {level} | Loss-risk score ~{percent}% (heuristic)",
+        "ar": "🔄 الانعكاس {emoji} {level} | درجة خطر الخسارة ~{percent}% (إرشادية)",
     },
     "term.reversal.low": {"en": "Low", "ar": "منخفض"},
     "term.reversal.medium": {"en": "Medium", "ar": "متوسط"},
@@ -1623,8 +2070,8 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "ar": "* **معدل الانعكاس المتوقع:** {emoji} {description}",
     },
     "tr.loss_probability": {
-        "en": "* **Immediate Loss Probability:** {text}",
-        "ar": "* **احتمال الخسارة الفورية:** {text}",
+        "en": "* **Immediate Loss Risk (heuristic score):** {text}",
+        "ar": "* **خطر الخسارة الفورية (درجة إرشادية):** {text}",
     },
     "tr.technical": {
         "en": "* **Technical Analysis:** {score} / {strength} | **News:** {news}",
@@ -1694,10 +2141,10 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "ar": "* بيانات الحساب أو العقد غير متاحة — لم يتم التحقق من المخاطرة",
     },
     "tr.loss_text": {
-        "en": "{emoji} ~{percent}% chance the stop is hit before TP1 (rough estimate, "
-              "not a forecast)",
-        "ar": "{emoji} حوالي {percent}% احتمال ضرب الوقف قبل الهدف الأول "
-              "(تقدير تقريبي وليس توقعًا)",
+        "en": "{emoji} heuristic score ~{percent}% for the stop being hit before TP1 "
+              "(built from fixed rules, not a tested probability; the tested odds are below)",
+        "ar": "{emoji} درجة إرشادية ~{percent}% لضرب الوقف قبل الهدف الأول "
+              "(مبنية على قواعد ثابتة وليست احتمالًا مُختبَرًا؛ الاحتمالات المُختبَرة أدناه)",
     },
     "tr.reversal.low": {
         "en": "Low — trend evidence is consistent", "ar": "منخفض — أدلة الاتجاه متسقة",
