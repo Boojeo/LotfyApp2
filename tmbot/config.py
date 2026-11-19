@@ -351,8 +351,10 @@ class AutoConfig:
     enabled: bool = False              # master switch: /auto_on refuses while False
     allow_live: bool = False           # second switch: needed for a real-money account
     instruments: List[str] = field(default_factory=list)   # empty = the watchlist
-    session_start: str = "07:00"       # UTC, HH:MM: no new entries before this
-    session_end: str = "20:00"         # UTC, HH:MM: ...or after this
+    # UTC, HH:MM. The same time twice (the default) means all 24 hours; otherwise
+    # no new entries before session_start or after session_end (it may wrap midnight).
+    session_start: str = "00:00"
+    session_end: str = "00:00"
     weekdays: List[int] = field(default_factory=lambda: [0, 1, 2, 3, 4])  # Monday = 0
     max_open_positions: int = 3        # deals open at once, all instruments (3 = one basket)
     daily_loss_limit_percent: float = 3.0   # of the day's starting equity

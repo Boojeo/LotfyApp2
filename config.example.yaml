@@ -210,8 +210,8 @@ auto:
   enabled: false                 # master switch; /auto_on refuses while this is false
   allow_live: false              # second switch, needed for a real-money account
   instruments: []                # empty = the watchlist
-  session_start: "07:00"         # UTC; no new entries before this ...
-  session_end: "20:00"           # ... or after this
+  session_start: "00:00"         # UTC. The same time twice = all 24 hours (the default);
+  session_end: "00:00"           # e.g. "07:00" and "20:00" = only those hours
   weekdays: [0, 1, 2, 3, 4]      # Monday = 0
   max_open_positions: 3          # deals open at once, all instruments (3 = one basket)
   daily_loss_limit_percent: 3.0  # of the day's starting equity; no new entries once reached
