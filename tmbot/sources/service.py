@@ -22,11 +22,11 @@ Direction and strength:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor, wait
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -110,15 +110,27 @@ NEEDS = {
 
 
 class SourceService:
+    """Never blocks its caller: a report reads what is cached and any download runs in the background.
+
+    * first call for a source: starts the download in a daemon thread and reports it as "still loading";
+    * cached and younger than its TTL: used as it is;
+    * older than its TTL: the last good copy is used while one background refresh runs (at most one
+      per source, however many reports ask); if the refresh fails the last good copy stays and the
+      failure is noted;
+    * a failure with nothing to fall back on is remembered for a few minutes, not retried every call.
+    Whether data is fresh is decided from the date INSIDE the data (when it was published or
+    observed), never from when it was downloaded, so a cached copy cannot pass for fresh.
+    """
+
     def __init__(self, config: SourcesConfig, session: Optional[requests.Session] = None,
                  clock: Callable[[], datetime] = utcnow):
         self.config = config
         self._http = session or requests.Session()
         self._clock = clock
         self._lock = threading.Lock()
-        self._cache: Dict[str, Tuple[float, Any, str]] = {}      # name -> (stored at, value, error)
-        self._inflight: Dict[str, Future] = {}
-        self._pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="sources")
+        # key -> (stored at, value, error); value is the last GOOD copy (kept through failures)
+        self._cache: Dict[str, Tuple[float, Any, str]] = {}
+        self._running: Dict[str, threading.Thread] = {}
 
     # ------------------------------------------------------------------- fetching
 
@@ -135,23 +147,63 @@ class SourceService:
                     raise
         raise RuntimeError("unreachable")
 
-    def _cached(self, name: str, ttl: float, load: Callable[[], Any]) -> Tuple[Any, str]:
-        """(value, error). A failure is remembered briefly instead of retried on every call."""
-        now = time.monotonic()
+    def _refresh(self, key: str, ttl: float, load: Callable[[], Any]) -> None:
+        """Download ``key`` in a daemon thread, at most one at a time per key.
+
+        The cache is looked at again under the lock: a download that finished a moment ago
+        must not be started a second time by a caller that decided just before it landed.
+        """
         with self._lock:
-            hit = self._cache.get(name)
-        if hit:
-            stored, value, error = hit
-            if now - stored < (FAILURE_RETRY_SECONDS if error else ttl):
+            running = self._running.get(key)
+            if running is not None and running.is_alive():
+                return
+            entry = self._cache.get(key)
+            if entry and time.monotonic() - entry[0] < (FAILURE_RETRY_SECONDS if entry[2] else ttl):
+                return
+
+            def work() -> None:
+                try:
+                    value, error = load(), ""
+                except Exception as exc:
+                    value, error = None, f"{type(exc).__name__}: {str(exc)[:120]}"
+                    log.warning("free source %s failed: %s", key, error)
+                with self._lock:
+                    previous = self._cache.get(key)
+                    if error and previous and previous[1] is not None:
+                        value = previous[1]                      # keep the last good copy
+                    self._cache[key] = (time.monotonic(), value, error)
+                    self._running.pop(key, None)
+
+            thread = threading.Thread(target=work, name=f"source-{key}", daemon=True)
+            self._running[key] = thread
+            thread.start()
+
+    def _cached(self, key: str, ttl: float, load: Callable[[], Any]) -> Tuple[Any, str]:
+        """(value, error) at once. Starts a background download when there is none or it is old."""
+        with self._lock:
+            entry = self._cache.get(key)
+        if entry:
+            stored, value, error = entry
+            limit = FAILURE_RETRY_SECONDS if error else ttl
+            if time.monotonic() - stored < limit:
                 return value, error
-        try:
-            value, error = load(), ""
-        except Exception as exc:
-            value, error = None, f"{type(exc).__name__}: {str(exc)[:120]}"
-            log.warning("free source %s failed: %s", name, error)
+            self._refresh(key, ttl, load)
+            return value, (error if value is None else "")
+        self._refresh(key, ttl, load)
+        return None, "still loading (first download in progress); used from the next report"
+
+    def loading(self) -> bool:
         with self._lock:
-            self._cache[name] = (now, value, error)
-        return value, error
+            return any(t.is_alive() for t in self._running.values())
+
+    def wait_idle(self, seconds: float) -> bool:
+        """For the command line and tests only: wait for the downloads to finish."""
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            if not self.loading():
+                return True
+            time.sleep(0.05)
+        return not self.loading()
 
     def _treasury(self, data: str) -> List[Tuple[Any, Dict[str, float]]]:
         """This month's rows, plus last month's when it is early in the month (a 5-day change needs 6)."""
@@ -186,25 +238,23 @@ class SourceService:
         ttl, load = self._loader(name)
         return self._cached(name, ttl, load)
 
-    def _weather(self) -> Tuple[Optional[float], int, Optional[datetime]]:
+    def _weather(self) -> Optional[Tuple[float, int, Optional[datetime]]]:
         total, count, updated = 0.0, 0, None
         for city, (lat, lon) in CITIES.items():
             def load(lat=lat, lon=lon):
                 point = self._get(URLS["nws_point"].format(lat=lat, lon=lon))
-                import json
-                forecast = json.loads(point)["properties"]["forecast"]
-                return parsers.parse_nws_forecast(self._get(forecast))
+                return parsers.parse_nws_forecast(self._get(json.loads(point)["properties"]["forecast"]))
             data, _ = self._cached(f"nws:{city}", TTL["weather"], load)
             hdd = parsers.heating_degree_days(data["periods"]) if data else None
             if hdd is not None:
                 total, count, updated = total + hdd, count + 1, data.get("updated") or updated
-        return (total if count else None), count, updated
+        return (total, count, updated) if count else None
 
     def _fred(self) -> Dict[str, List[Tuple[Any, float]]]:
         key = self.config.fred_api_key
+        out: Dict[str, List[Tuple[Any, float]]] = {}
         if not key:
-            return {}
-        out = {}
+            return out
         for sid, units in (("CPIAUCSL", "&units=pc1"), ("UNRATE", ""), ("PAYEMS", "&units=chg"), ("DTWEXBGS", "")):
             data, _ = self._cached(f"fred:{sid}", TTL["fred"], lambda sid=sid, units=units: parsers.parse_fred(
                 self._get(URLS["fred"].format(sid=sid, key=key, units=units))))
@@ -214,71 +264,31 @@ class SourceService:
 
     # ----------------------------------------------------------------- evidence
 
-    def _submit(self, key: str, task: Callable[[], Any]) -> Future:
-        """Run ``task`` in the pool, or reuse the one already running under ``key``."""
-        with self._lock:
-            running = self._inflight.get(key)
-            if running is not None and not running.done():
-                return running
-            future = self._pool.submit(task)
-            self._inflight[key] = future
-            return future
-
-    def warm(self) -> None:
-        """Start loading every source in the background (never blocks); later reports find it cached."""
-        for asset in rules.SCORED_SPECS:
-            try:
-                self._start(asset, self._clock())
-            except Exception:
-                log.exception("warming the free sources for %s failed", asset)
-
-    def _tasks(self, asset: str, now: datetime) -> Dict[str, Callable[[], Any]]:
-        """Every fetch this instrument needs, by name."""
+    def _gather(self, asset: str, now: datetime) -> Tuple[List[Evidence], Dict[str, str]]:
+        """All evidence for ``asset`` from what is cached, and why any source is missing. Never waits."""
         needs = list(NEEDS[asset])
         if asset == "eurusd":
             needs = ["treasury_nominal", "ecb_2y", "ecb_10y", "ecb_dfr", "effr", "cot"]
-        tasks: Dict[str, Callable[[], Any]] = {
-            n: (lambda n=n: self._fetch(n)) for n in needs if n not in ("cot", "weather")}
-        if "cot" in needs:
-            book = "cot_fin" if rules.COT[asset][0] == "fin" else "cot_disagg"
-            tasks[book] = lambda: self._fetch(book)
-        if "weather" in needs and self.config.weather:
-            tasks["weather"] = lambda: (self._weather(), "")
-        if self.config.fred_api_key:
-            tasks["fred"] = lambda: (self._fred(), "")
-        if self.config.calendar_unofficial:
-            tasks["calendar"] = lambda: self._cached(
-                "calendar", TTL["calendar"], lambda: parsers.parse_calendar(self._get(URLS["calendar"])))
-        if self.config.news_feeds:
-            tasks["news"] = lambda: (self._news(asset, now), "")
-        return tasks
-
-    def _start(self, asset: str, now: datetime) -> Dict[str, Future]:
-        return {name: self._submit(name if name != "news" else f"news:{asset}", task)
-                for name, task in self._tasks(asset, now).items()}
-
-    def _gather(self, asset: str, now: datetime) -> Tuple[List[Evidence], Dict[str, str]]:
-        """All evidence for ``asset``, and why any source is missing.
-
-        Waits at most ``wait_seconds`` for the sources: a slow server never holds up a
-        report. What is still loading keeps loading in the background and is used from
-        the next report on.
-        """
-        futures = self._start(asset, now)
-        wait(list(futures.values()), timeout=self.config.wait_seconds)
         data: Dict[str, Any] = {}
         errors: Dict[str, str] = {}
-        for name, future in futures.items():
-            if not future.done():
-                errors[name] = "still loading (slow server); used from the next report"
-                continue
-            try:
-                value, error = future.result()
-            except Exception as exc:
-                value, error = None, f"{type(exc).__name__}: {str(exc)[:100]}"
+        names = [n for n in needs if n not in ("cot", "weather")]
+        if "cot" in needs:
+            names.append("cot_fin" if rules.COT[asset][0] == "fin" else "cot_disagg")
+        for name in names:
+            value, error = self._fetch(name)
             data[name] = value
-            if error or value is None:
+            if value is None:
                 errors[name] = error or "no data returned"
+        if "weather" in needs and self.config.weather:
+            data["weather"] = self._weather()
+        if self.config.fred_api_key:
+            data["fred"] = self._fred()
+        if self.config.calendar_unofficial:
+            events, error = self._cached("calendar", TTL["calendar"],
+                                         lambda: parsers.parse_calendar(self._get(URLS["calendar"])))
+            data["calendar"] = events
+            if events is None:
+                errors["calendar"] = error
 
         out: List[Evidence] = []
 
@@ -321,12 +331,10 @@ class SourceService:
         out += rules.fred_context(data.get("fred") or {})
         if data.get("calendar"):
             out += rules.calendar_events(data["calendar"], asset, now)
-        news = data.get("news")
-        if news:
-            items, feed_errors = news
+        if self.config.news_feeds:
+            items, feed_errors = self._news(asset, now)
             out += items
             errors.update(feed_errors)
-        errors.pop("news", None)
         return out, errors
 
     def _news(self, asset: str, now: datetime) -> Tuple[List[Evidence], Dict[str, str]]:
@@ -337,7 +345,7 @@ class SourceService:
             if asset not in assets:
                 continue
             items, error = self._cached(f"feed:{name}", TTL["news"], lambda url=url: parsers.parse_rss(self._get(url)))
-            if error or items is None:
+            if items is None:
                 errors[f"feed:{name}"] = error or "no data returned"
                 continue
             official = tier == BREAKING and ("federalreserve" in url or "ecb.europa" in url)
@@ -356,10 +364,18 @@ class SourceService:
                     else "unverified single-source report: context only, never scored"))
         return dedupe(found), errors
 
+    def warm(self) -> None:
+        """Start every download in the background (never blocks); later reports find it cached."""
+        for asset in rules.SCORED_SPECS:
+            try:
+                self._gather(asset, self._clock())
+            except Exception:
+                log.exception("warming the free sources for %s failed", asset)
+
     # ---------------------------------------------------------------- aggregation
 
     def collect(self, asset: str, now: Optional[datetime] = None) -> Dict[str, Any]:
-        """The fundamental result for ``asset``, in the shape the shadow analysis shows."""
+        """The fundamental result for ``asset`` from what is cached. Never waits for a download."""
         now = now or self._clock()
         evidence, errors = self._gather(asset, now)
         return aggregate(asset, evidence, errors, now)

@@ -378,7 +378,6 @@ class SourcesConfig:
 
     enabled: bool = True
     timeout: float = 30.0                  # seconds a single request may take (one retry)
-    wait_seconds: float = 8.0              # a report waits this long; slower sources load in the background
     fred_api_key: str = ""                 # optional
     news_feeds: bool = True                # official and public RSS headlines (context only)
     weather: bool = True                   # NOAA forecast context for natural gas

@@ -260,7 +260,6 @@ scoring:
 sources:
   enabled: true
   timeout: 30                    # seconds a single request may take (the US Treasury site is slow)
-  wait_seconds: 8                # a report never waits longer; slow sources keep loading for the next one
   fred_api_key: ""               # optional and free (no card): adds inflation/jobs context lines; or env FRED_API_KEY
   news_feeds: true
   weather: true

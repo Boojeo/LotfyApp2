@@ -929,8 +929,9 @@ is slow is listed as missing, lowers the "data quality" figure, and adds no dire
 Limits to know: there are no free consensus forecasts, so inflation and jobs prints cannot be scored as
 "surprises" (they appear only as context with a free FRED key); oil and gas use week-on-week changes and the
 gas 5-year average, not seasonal norms for oil; the scales that turn a change into a signal are provisional, and
-printed with every line. The US Treasury server answers slowly (about 20 s), so a report waits at most
-`sources.wait_seconds` and the data is used from the next report. `sources.calendar_unofficial` adds a community
+printed with every line. Downloads run in background threads and a report only ever reads what is already
+cached (the US Treasury server alone takes about 20 s), so nothing waits on a slow server: the first report
+after start-up may say "still loading" and the next one has the data. `sources.calendar_unofficial` adds a community
 economic calendar and is off by default.
 
 Hosts contacted: home.treasury.gov, data-api.ecb.europa.eu, www.ecb.europa.eu, markets.newyorkfed.org, ir.eia.gov,

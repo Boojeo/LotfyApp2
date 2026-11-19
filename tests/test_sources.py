@@ -287,22 +287,28 @@ class FakeSession:
                 body = (FIX / name).read_bytes()
                 if name == "nws_point.json":
                     body = body.replace(b"https://api.weather.gov/gridpoints/OKX/33,42/forecast",
-                                        b"https://api.weather.gov/forecast")
+                                        b"https://api.weather.gov/forecast/" + url.rsplit("/", 1)[1].encode())
                 return FakeResponse(body)
         return FakeResponse(b"", 404)
 
 
 def make(fail=(), delay=0.0, **cfg):
-    config = SourcesConfig(wait_seconds=cfg.pop("wait_seconds", 15.0), **cfg)
     session = FakeSession(fail, delay)
-    return service.SourceService(config, session=session, clock=lambda: NOW), session
+    return service.SourceService(SourcesConfig(**cfg), session=session, clock=lambda: NOW), session
+
+
+def settle(svc, asset, now=NOW):
+    """What a report sees once the background downloads have finished."""
+    svc.collect(asset, now)                    # starts them (returns at once)
+    assert svc.wait_idle(15), "downloads did not finish"
+    return svc.collect(asset, now)
 
 
 class ServiceTests(unittest.TestCase):
     def test_every_instrument_gets_a_real_reading_from_the_saved_responses(self):
         svc, _ = make()
         for asset in rules.SCORED_SPECS:
-            r = svc.collect(asset, NOW)
+            r = settle(svc, asset)
             self.assertEqual(r["status"], "available", (asset, r["missing"]))
             self.assertEqual(r["coverage"], 1.0, (asset, r["missing"]))
             self.assertIn(r["direction"], ("BULLISH", "BEARISH", "NEUTRAL"))
@@ -310,63 +316,108 @@ class ServiceTests(unittest.TestCase):
             self.assertTrue(all(i["source"] and i["published_at"] for i in r["items"] if i["tier"] != "scheduled"))
 
     def test_oil_reads_the_petroleum_stocks_from_the_saved_report(self):
-        r = service.SourceService(SourcesConfig(), session=FakeSession(), clock=lambda: NOW).collect("wti", NOW)
+        svc, _ = make()
+        r = settle(svc, "wti")
         crude = next(i for i in r["items"] if "crude" in i["title"])
         self.assertIn("+3.4 Mb", crude["title"])
         self.assertLess(crude["signal"], 0)               # a build is bearish
 
     def test_the_second_call_uses_the_cache(self):
         svc, session = make()
-        svc.collect("natgas", NOW)
+        settle(svc, "natgas")
         first = len(session.calls)
-        svc.collect("natgas", NOW)
+        settle(svc, "natgas")
         self.assertEqual(len(session.calls), first)
 
     def test_a_failed_source_is_missing_not_neutral_and_not_retried_at_once(self):
         svc, session = make(fail=("treasury",))
-        r = svc.collect("gold", NOW)
+        r = settle(svc, "gold")
         self.assertEqual(r["status"], "available")                      # the dollar item still counts
         self.assertAlmostEqual(r["coverage"], 0.25)
         self.assertTrue(any(m["key"] == "src_missing" and "US 10-year real yield" == m["args"]["what"] for m in r["missing"]))
         calls = len(session.calls)
-        svc.collect("gold", NOW)
+        settle(svc, "gold")
         self.assertEqual(len(session.calls), calls)                      # remembered: no hammering
 
     def test_all_sources_down_gives_unavailable(self):
         svc, _ = make(fail=("treasury", "ecb", "eia", "cftc", "newyorkfed", "federalreserve", "oilprice",
                             "dowjones", "weather"))
-        r = svc.collect("gold", NOW)
+        r = settle(svc, "gold")
         self.assertEqual((r["status"], r["direction"]), ("unavailable", None))
 
-    def test_a_slow_server_never_holds_up_the_report(self):
-        svc, _ = make(delay=1.5, wait_seconds=0.2)
+    def test_a_slow_or_hanging_server_never_holds_up_the_caller(self):
+        svc, _ = make(delay=3.0)
         started = time.monotonic()
-        r = svc.collect("natgas", NOW)
-        self.assertLess(time.monotonic() - started, 1.2)
+        first = svc.collect("natgas", NOW)
+        for _ in range(20):
+            svc.collect("natgas", NOW)
+        self.assertLess(time.monotonic() - started, 0.5)
+        self.assertEqual(first["status"], "unavailable")
+        self.assertTrue(any("still loading" in str(m["args"]) for m in first["missing"]))
+        self.assertTrue(svc.loading())
+        self.assertEqual(settle(svc, "natgas")["status"], "available")      # used from the next report
+
+    def test_many_callers_at_once_never_download_the_same_thing_twice(self):
+        import threading
+        svc, session = make(delay=0.2)
+        threads = [threading.Thread(target=svc.collect, args=(asset, NOW))
+                   for asset in ("gold", "silver", "wti", "brent", "natgas", "eurusd") * 4]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        self.assertTrue(svc.wait_idle(20))
+        for asset in rules.SCORED_SPECS:
+            svc.collect(asset, NOW)
+        svc.wait_idle(20)
+        self.assertEqual(len(session.calls), len(set(session.calls)), "a URL was requested twice")
+
+    def test_the_downloads_run_in_daemon_threads_that_cannot_block_shutdown(self):
+        import threading
+        svc, _ = make(delay=0.3)
+        svc.collect("gold", NOW)
+        workers = [t for t in threading.enumerate() if t.name.startswith("source-")]
+        self.assertTrue(workers)
+        self.assertTrue(all(t.daemon for t in workers))
+        svc.wait_idle(10)
+
+    def test_a_failed_refresh_keeps_the_last_good_copy_and_it_is_still_judged_by_its_own_date(self):
+        svc, session = make()
+        self.assertEqual(settle(svc, "natgas")["status"], "available")
+        for key, (stored, value, error) in list(svc._cache.items()):
+            svc._cache[key] = (stored - 10 * 3600, value, error)             # every cached copy is now past its TTL
+        session.fail = ("ir.eia.gov", "oilprice", "federalreserve", "ecb.europa", "dowjones", "cftc", "weather")
+        again = settle(svc, "natgas")
+        self.assertEqual(again["status"], "available")                       # the old copy survived the failure
+        # ... but nobody may mistake it for fresh: two weeks later its own date makes it stale
+        later = svc.collect("natgas", NOW + timedelta(days=14))
+        self.assertEqual((later["status"], later["why"]), ("unavailable", "no_data"))
+        self.assertTrue(any(m["key"] == "src_stale" for m in later["missing"]))
+
+    def test_downloaded_recently_does_not_mean_fresh(self):
+        svc, _ = make()
+        settle(svc, "wti")
+        r = svc.collect("wti", NOW + timedelta(days=30))          # cache is "new", the data are a month old
         self.assertEqual(r["status"], "unavailable")
-        self.assertTrue(any("still loading" in str(m["args"]) for m in r["missing"]))
-        time.sleep(2.5)                                                   # the downloads finish in the background
-        self.assertEqual(svc.collect("natgas", NOW)["status"], "available")
+        self.assertTrue(all(i["skipped"] == "stale" for i in r["items"] if i["tier"] == "confirmed"))
 
     def test_the_unofficial_calendar_is_off_unless_asked(self):
         self.assertFalse(SourcesConfig().calendar_unofficial)
         svc, session = make()
-        svc.collect("gold", NOW)
+        settle(svc, "gold")
         self.assertFalse(any("ff_calendar" in u for u in session.calls))
         svc2, session2 = make(calendar_unofficial=True)
-        svc2.collect("gold", NOW)
+        settle(svc2, "gold")
         self.assertTrue(any("ff_calendar" in u for u in session2.calls))
 
     def test_no_key_is_needed_and_fred_is_only_context(self):
         self.assertEqual(SourcesConfig().fred_api_key, "")
         svc, session = make()
-        svc.collect("gold", NOW)
+        settle(svc, "gold")
         self.assertFalse(any("stlouisfed" in u for u in session.calls))
 
     def test_only_free_public_hosts_are_ever_called(self):
         svc, session = make(calendar_unofficial=True)
         for asset in rules.SCORED_SPECS:
-            svc.collect(asset, NOW)
+            settle(svc, asset)
         hosts = {u.split("/")[2] for u in session.calls}
         self.assertLessEqual(hosts, {
             "home.treasury.gov", "data-api.ecb.europa.eu", "markets.newyorkfed.org", "ir.eia.gov",
@@ -386,6 +437,8 @@ def shadow_builder(svc, epic_asset="gold", mode="shadow"):
 class IntegrationTests(unittest.TestCase):
     def setUp(self):
         self.svc, _ = make()
+        self.svc.warm()
+        self.assertTrue(self.svc.wait_idle(20))
 
     def test_the_three_results_use_real_fundamentals_and_say_how_they_combine(self):
         plan = shadow_builder(self.svc).build("GOLD")
@@ -445,6 +498,7 @@ class IntegrationTests(unittest.TestCase):
         svc, session = make()
         shadow_builder(svc).build("GOLD", fundamentals=False)
         self.assertEqual(session.calls, [])
+        self.assertFalse(svc.loading())
 
     def test_a_failure_inside_the_sources_cannot_cost_the_plan(self):
         class Broken:
@@ -463,3 +517,47 @@ class IntegrationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CommandTests(unittest.TestCase):
+    def test_the_sources_command_prints_every_instrument_and_touches_no_broker_or_database(self):
+        import contextlib
+        import io
+        import os
+        import tempfile
+        from tmbot import cli
+        svc, session = make()
+        args = type("A", (), dict(asset=None, wait=15.0))()
+        out, err = io.StringIO(), io.StringIO()
+        before = os.listdir(tempfile.gettempdir())
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = cli._sources_command(args, Config(), service=svc)
+        self.assertEqual(code, 0)
+        text = out.getvalue()
+        for asset in rules.SCORED_SPECS:
+            self.assertIn(f"== {asset}:", text)
+        self.assertIn("[confirmed data]", text)
+        self.assertIn("Read-only", text)
+
+    def test_an_unknown_instrument_is_refused(self):
+        import contextlib
+        import io
+        from tmbot import cli
+        args = type("A", (), dict(asset="bitcoin", wait=1.0))()
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(cli._sources_command(args, Config(), service=make()[0]), 2)
+
+    def test_check_reports_that_shadow_is_not_trading_and_where_auto_stands(self):
+        import contextlib
+        import io
+        import tempfile
+        from tmbot import cli
+        path = Path(tempfile.mkdtemp()) / "c.yaml"
+        path.write_text("scoring:\n  mode: shadow\nanalysis:\n  watchlist:\n    - {epic: GOLD, display: Gold}\n")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = cli.main(["--env", "demo", "--config", str(path), "check"])
+        self.assertEqual(code, 0)
+        text = out.getvalue()
+        self.assertIn("scoring       shadow  (three-part analysis shown, never used to trade)", text)
+        self.assertIn("auto trading  disabled, live accounts not allowed, minimum strength 60", text)
