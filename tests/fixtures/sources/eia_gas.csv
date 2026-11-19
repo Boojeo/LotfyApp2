@@ -1,0 +1,19 @@
+﻿Energy Information Administration
+"Working Gas in Underground Storage, Lower 48"
+"Released: November 13, 2026 at 10:30 a.m. (eastern time) for the Week Ending November 6, 2026"
+"Next Release: November 19, 2026"
+Region,Stocks in billion (Bcf),,,,,,,,,,,,Historical Comparisons
+,,,,,,,,,,,,,Year Ago (11/06/25),,,,,,5-Year (2021-25) Average
+,06-Nov-26,,,30-Oct-26,,,net change (Bcf),,,implied flow (Bcf),,,stocks (Bcf),,,% change,,,stocks (Bcf),,,% change
+East,"938","","","926","",,"12","",,"12",,"","913",,,"2.7",,,"910",,,"3.1",,"",""
+Midwest,"1,129","","","1,111","",,"18","",,"18",,"","1,115",,,"1.3",,,"1,102",,,"2.5",,"",""
+Mountain,"262","","","260","",,"2","",,"2",,"","290",,,"-9.7",,,"251",,,"4.4",,"",""
+Pacific,"298","","","296","",,"2","",,"2",,"","321",,,"-7.2",,,"285",,,"4.6",,"",""
+South Central,"1,235","","","1,208","",,"27","",,"27",,"","1,315",,,"-6.1",,,"1,239",,,"-0.3",,"",""
+  Salt,"312","","","296","",,"16","",,"16",,"","351",,,"-11.1",,,"331",,,"-5.7",,"",""
+  Nonsalt,"924","","","912","",,"12","",,"12",,"","964",,,"-4.1",,,"907",,,"1.9",,"",""
+Total,"3,862","","","3,801","",,"61","",,"61",,"","3,954",,,"-2.3",,,"3,787",,,"2.0",,"",""
+Note: This table is provided for ready processing of weekly volumes estimates. 
+It does not include any special notices or other additional information 
+that is available only on the official Weekly Natural Gas Storage Report 
+which is located at http://ir.eia.gov/ngs/ngs.html. 

@@ -368,6 +368,25 @@ SCORING_MODES = ("legacy", "shadow")
 
 
 @dataclass
+class SourcesConfig:
+    """Free, official fundamental data for the shadow analysis. No paid service anywhere.
+
+    Used only when ``scoring.mode`` is "shadow"; in "legacy" nothing is fetched.
+    Needs no key. ``fred_api_key`` (free, no card; env FRED_API_KEY) only adds
+    inflation / jobs / dollar-index context lines.
+    """
+
+    enabled: bool = True
+    timeout: float = 30.0                  # seconds a single request may take (one retry)
+    wait_seconds: float = 8.0              # a report waits this long; slower sources load in the background
+    fred_api_key: str = ""                 # optional
+    news_feeds: bool = True                # official and public RSS headlines (context only)
+    weather: bool = True                   # NOAA forecast context for natural gas
+    calendar_unofficial: bool = False      # community economic calendar: OFF unless you turn it on
+    assets: Dict[str, str] = field(default_factory=dict)   # epic -> gold|silver|wti|brent|natgas|eurusd
+
+
+@dataclass
 class ScoringConfig:
     """The three-part analysis (technical / fundamental / overall).
 
@@ -422,6 +441,7 @@ class Config:
     exit_advice: ExitAdviceConfig = field(default_factory=ExitAdviceConfig)
     protection: ProtectionConfig = field(default_factory=ProtectionConfig)
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
+    sources: SourcesConfig = field(default_factory=SourcesConfig)
     database: str = "tmbot.sqlite3"
     log_level: str = "INFO"
     dry_run: bool = False
@@ -700,6 +720,7 @@ _NESTED = {
     "ExitAdviceConfig": ExitAdviceConfig,
     "ProtectionConfig": ProtectionConfig,
     "ScoringConfig": ScoringConfig,
+    "SourcesConfig": SourcesConfig,
     "StyleConfig": StyleConfig,
 }
 
@@ -743,6 +764,7 @@ def apply_env(config: Config) -> Config:
 
     config.news.api_key = env.get("NEWS_API_KEY", config.news.api_key)
     config.llm.api_key = env.get("ANTHROPIC_API_KEY", config.llm.api_key)
+    config.sources.fred_api_key = env.get("FRED_API_KEY", config.sources.fred_api_key)
     config.telegram.bot_token = env.get("TELEGRAM_BOT_TOKEN", config.telegram.bot_token)
     config.telegram.chat_id = env.get("TELEGRAM_CHAT_ID", config.telegram.chat_id)
     if config.telegram.bot_token and config.telegram.chat_id:

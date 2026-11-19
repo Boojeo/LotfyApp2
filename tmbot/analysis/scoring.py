@@ -285,12 +285,16 @@ def overall_result(tech: Dict[str, Any], fund: Dict[str, Any]) -> Dict[str, Any]
 def compute(
     technical: Any, fundamental: Any, headlines: Sequence[Dict[str, Any]], *,
     legacy_strength: float, legacy_bias: Bias, provider: str, lookback_hours: float,
-    now: datetime,
+    now: datetime, evidence: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """All three results, plus the old numbers for comparison. Pure; changes nothing."""
+    """All three results, plus the old numbers for comparison. Pure; changes nothing.
+
+    ``evidence`` is the free-source fundamental result (``sources.service``); with it
+    the Fundamental result is built from official data, otherwise from the news headlines.
+    """
     tech = technical_result(technical)
-    fund = fundamental_result(fundamental, headlines, provider=provider,
-                              lookback_hours=lookback_hours, now=now)
+    fund = evidence if evidence is not None else fundamental_result(
+        fundamental, headlines, provider=provider, lookback_hours=lookback_hours, now=now)
     return {
         "version": VERSION, "technical": tech, "fundamental": fund,
         "overall": overall_result(tech, fund),

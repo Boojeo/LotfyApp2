@@ -32,6 +32,7 @@ def auto_config(**style) -> Config:
     config.management = management(exit_model="three_deals")
     config.llm.enabled = False
     config.news.provider = "none"
+    config.sources.enabled = False      # tests never touch the network
     config.report.charts = False
     config.report.intraday_refresh_hours = 0
     config.style.mode = "auto"
