@@ -250,3 +250,18 @@ protection:
 #           setting that trades on it. Missing news is "unavailable", never bullish/bearish.
 scoring:
   mode: legacy                   # legacy | shadow
+
+# FREE FUNDAMENTAL DATA for the shadow analysis. Used only while scoring.mode is "shadow";
+# in "legacy" nothing is fetched. No paid service, no card, no key needed.
+#   scored (official, daily/weekly): US Treasury real and nominal yields, ECB reference rates and
+#       yield curve, EIA weekly petroleum and natural-gas storage reports
+#   context only (never scored): CFTC positioning, NOAA weather, Fed/ECB/EIA announcements,
+#       public RSS headlines (labelled unverified), optional FRED inflation/jobs
+sources:
+  enabled: true
+  timeout: 30                    # seconds a single request may take (the US Treasury site is slow)
+  fred_api_key: ""               # optional and free (no card): adds inflation/jobs context lines; or env FRED_API_KEY
+  news_feeds: true
+  weather: true
+  calendar_unofficial: false     # community economic calendar: unofficial, OFF unless you turn it on
+  assets: {}                     # only if an instrument is not recognised, e.g. {"GOLD.m": "gold"}

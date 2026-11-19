@@ -7,7 +7,7 @@ import logging
 import signal
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from . import config as config_module
 from .analysis.report import ReportBuilder, render_full, render_markdown
@@ -87,6 +87,16 @@ def build_parser() -> argparse.ArgumentParser:
     compare.add_argument("--records", metavar="FILE", default=None,
                          help="also export one row per stored plan to a NEW .csv or .jsonl file")
 
+    sources = sub.add_parser(
+        "sources",
+        help="download the free fundamental data now and show what each instrument would get "
+             "(read-only: no broker, no database, no orders)",
+    )
+    sources.add_argument("asset", nargs="?", default=None,
+                         help="gold, silver, wti, brent, natgas or eurusd (default: all)")
+    sources.add_argument("--wait", type=float, default=90.0,
+                         help="seconds to wait for the downloads (the US Treasury site takes ~20 s)")
+
     markets = sub.add_parser(
         "markets", help="search for an instrument to find the epic name to use"
     )
@@ -138,7 +148,7 @@ def _configure_logging(level: str) -> None:
 def _load_config(args: argparse.Namespace) -> Config:
     # These only read settings back, so they must work even when something is
     # missing -- that is exactly when you need to look.
-    inspecting = args.command in ("envs", "check", "doctor")
+    inspecting = args.command in ("envs", "check", "doctor", "sources", "compare")
     config = config_module.load(args.config)
     config.broker.environment = args.env
     config_module.resolve_environment_secrets(config)
@@ -175,6 +185,44 @@ def _compare_command(args: argparse.Namespace, config: Config) -> int:
     if args.records:
         print(f"wrote {compare_module.write_records(args.records, records)} rows to {args.records}")
     return 0
+
+
+def _sources_command(args: argparse.Namespace, config: Config, service: Any = None) -> int:
+    """Download the free sources and print each instrument's fundamental reading. Read-only."""
+    from .analysis.shadow_text import _item_lines
+    from .i18n import Translator
+    from .sources import rules as source_rules
+    from .sources.service import SourceService
+
+    assets = [args.asset] if args.asset else list(source_rules.SCORED_SPECS)
+    unknown = [a for a in assets if a not in source_rules.SCORED_SPECS]
+    if unknown:
+        print(f"unknown instrument {unknown[0]!r}; choose from: {', '.join(source_rules.SCORED_SPECS)}",
+              file=sys.stderr)
+        return 2
+    service = service or SourceService(config.sources)
+    for asset in assets:
+        service.collect(asset)                     # starts the downloads; returns at once
+    print(f"downloading the free sources (up to {args.wait:g} s) ...", file=sys.stderr)
+    service.wait_idle(args.wait)
+    t = Translator("en")
+    problems = 0
+    for asset in assets:
+        result = service.collect(asset)
+        print(f"\n== {asset}: ", end="")
+        if result["status"] == "available":
+            print(f"{result['direction']} score {result['score']:+.0f}, strength {result['strength']:.0f}/100, "
+                  f"data quality {result['quality'] * 100:.0f}% (coverage {result['coverage'] * 100:.0f}%, "
+                  f"freshness {result['freshness'] * 100:.0f}%)")
+        else:
+            print("UNAVAILABLE (not counted as bullish, bearish or neutral)")
+            problems += 1
+        for line in _item_lines(result, t):
+            print(line)
+        for item in result["missing"]:
+            print("  ! " + t(f"shadow.r.{item['key']}", **item["args"]))
+    print("\nRead-only: nothing was sent to a broker and nothing was stored.")
+    return 1 if problems == len(assets) else 0
 
 
 def _build_notifier(config: Config, store: Store) -> Notifier:
@@ -295,6 +343,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             and args.command not in ("envs", "check", "doctor", "journal")):
         log.warning("LIVE environment selected -- real orders can be modified")
 
+    if args.command == "sources":
+        return _sources_command(args, config)         # no broker, no database
     if args.command == "compare":
         return _compare_command(args, config)     # before Store(): it must not touch the database
 
@@ -553,6 +603,15 @@ def main(argv: Optional[List[str]] = None) -> int:
                   f"({'right-to-left' if config.language == 'ar' else 'left-to-right'})")
             print(f"telegram      {'on' if config.telegram.enabled else 'off'}")
             print(f"news          {config.news.provider}")
+            print(f"scoring       {config.scoring.mode}"
+                  + ("  (three-part analysis shown, never used to trade)" if config.scoring.mode == "shadow"
+                     else "  (only the existing scoring)"))
+            print(f"free sources  {'on' if config.sources.enabled and config.scoring.mode == 'shadow' else 'off'}"
+                  f"  (used only in shadow mode; calendar {'on' if config.sources.calendar_unofficial else 'off'}, "
+                  f"FRED key {'set' if config.sources.fred_api_key else 'not set'})")
+            print(f"auto trading  {'ENABLED in settings' if config.auto.enabled else 'disabled'}"
+                  f", live accounts {'allowed' if config.auto.allow_live else 'not allowed'}"
+                  f", minimum strength {config.auto.min_signal_strength:g}")
             print(f"claude        {'on' if config.llm.enabled else 'off'} "
                   f"({config.llm.model})")
             print()

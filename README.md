@@ -908,3 +908,32 @@ setups failed each check, a hypothetical count, and how each level fared). `comp
 the plans stored while shadow was on. Both are read-only: the database is opened read-only, nothing is
 traded, and an export file that already exists is never overwritten. `/why` shows a one-line old-vs-new
 count when shadow plans exist.
+
+### Free fundamental data (shadow only)
+
+With `scoring.mode: shadow` the Fundamental result is built from real, free, official data (nothing is
+fetched in `legacy` mode, no key is needed, no card, no paid service):
+
+| Instrument | Scored from (official) | Shown as context, never scored |
+|---|---|---|
+| Gold, silver | US 10-year real yield and 2-year yield (US Treasury), dollar via the ECB EUR/USD reference rate | CFTC managed-money positioning, Fed press releases, optional FRED inflation/jobs |
+| WTI, Brent | EIA weekly crude, gasoline and distillate stock changes, dollar (ECB) | CFTC positioning, EIA Today in Energy, Oilprice.com (unverified), next EIA report time |
+| Natural gas | EIA weekly storage vs the 5-year average | NOAA 7-day forecast heating degree-days, CFTC positioning, EIA articles |
+| EUR/USD | US minus German 2- and 10-year yield spreads (Treasury + ECB) | Fed funds vs ECB deposit rate, CFTC leveraged funds, Fed and ECB announcements |
+
+Each line is tagged **confirmed data**, **scheduled event**, **official/breaking news** or **unverified report**, with
+its source, publication time and age. Only confirmed data is scored; news, scheduled events, positioning and
+weather inform but never move a score. Data older than its limit is left out and listed; a source that fails or
+is slow is listed as missing, lowers the "data quality" figure, and adds no direction. Duplicate stories are shown once.
+
+Limits to know: there are no free consensus forecasts, so inflation and jobs prints cannot be scored as
+"surprises" (they appear only as context with a free FRED key); oil and gas use week-on-week changes and the
+gas 5-year average, not seasonal norms for oil; the scales that turn a change into a signal are provisional, and
+printed with every line. Downloads run in background threads and a report only ever reads what is already
+cached (the US Treasury server alone takes about 20 s), so nothing waits on a slow server: the first report
+after start-up may say "still loading" and the next one has the data. `sources.calendar_unofficial` adds a community
+economic calendar and is off by default.
+
+Hosts contacted: home.treasury.gov, data-api.ecb.europa.eu, www.ecb.europa.eu, markets.newyorkfed.org, ir.eia.gov,
+www.eia.gov, www.cftc.gov, api.weather.gov, www.federalreserve.gov, oilprice.com, feeds.content.dowjones.io (and
+api.stlouisfed.org only if you set a free FRED key).

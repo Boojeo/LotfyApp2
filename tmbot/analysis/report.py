@@ -36,10 +36,17 @@ class ReportBuilder:
     broker: BrokerAdapter
     config: Config
     news_provider: Optional[news_module.NewsProvider] = None
+    # Free official data for the shadow fundamental analysis (see tmbot.sources).
+    # Created only when scoring.mode is "shadow"; never read by a decision.
+    sources: Optional[Any] = None
 
     def __post_init__(self) -> None:
         if self.news_provider is None:
             self.news_provider = news_module.build(self.config.news)
+        if self.sources is None and self.config.scoring.mode == "shadow" and self.config.sources.enabled:
+            from ..sources.service import SourceService
+            self.sources = SourceService(self.config.sources)
+            self.sources.warm()                 # starts the downloads in the background; never blocks
 
     # ------------------------------------------------------------------ build
 
@@ -159,10 +166,27 @@ class ReportBuilder:
         )
         plan.entry_zone = self._entry_zone(plan, rules, quote, sizing)
         plan.odds = self._odds(epic, plan, profile.entry_timeframe, entry)
-        plan.shadow = self._shadow(plan, technical, fundamental, headlines)
+        plan.shadow = self._shadow(plan, technical, fundamental, headlines, fundamentals)
         return plan
 
-    def _shadow(self, plan: TradePlan, technical, fundamental, headlines) -> Dict[str, Any]:
+    def _evidence(self, plan: TradePlan, fundamentals: bool) -> Optional[Dict[str, Any]]:
+        """The free-source fundamental result for this instrument, or None to fall back."""
+        if not (fundamentals and self.sources):
+            return None
+        from ..sources import rules as source_rules
+        epic_config = self.config.epic_config(plan.epic)
+        asset = source_rules.detect_asset(
+            plan.epic, epic_config.display or "", self.config.sources.assets.get(plan.epic))
+        if not asset:
+            return None
+        try:
+            return self.sources.collect(asset)
+        except Exception:
+            log.exception("%s: free fundamental sources failed; using the news-only read", plan.epic)
+            return None
+
+    def _shadow(self, plan: TradePlan, technical, fundamental, headlines, fundamentals: bool = False
+                ) -> Dict[str, Any]:
         """The three-part analysis, for display and records only. Nothing reads it to decide.
 
         Off unless ``scoring.mode`` is "shadow". It runs after the plan is complete, on
@@ -175,6 +199,7 @@ class ReportBuilder:
                 technical, fundamental, headlines, legacy_strength=plan.confidence,
                 legacy_bias=plan.bias, provider=getattr(self.news_provider, "name", "none"),
                 lookback_hours=self.config.analysis.news_lookback_hours, now=utcnow(),
+                evidence=self._evidence(plan, fundamentals),
             )
         except Exception:
             log.exception("%s: shadow analysis failed; continuing without it", plan.epic)
