@@ -208,7 +208,7 @@ class AutoTrader:
         return self.t("auto.on", env=self.environment().upper(),
                       risk=f"{self.risk_percent():g}", limit=f"{self.cfg.daily_loss_limit_percent:g}",
                       cap=self.cfg.max_open_positions, instruments=", ".join(self.instruments()),
-                      start=self.cfg.session_start, end=self.cfg.session_end,
+                      session=self.session_text(), days=self.days_text(),
                       dry=self.t("auto.dry_run") if self.sup.config.dry_run else "")
 
     def _cannot_start(self) -> str:
@@ -388,7 +388,7 @@ class AutoTrader:
         if self._pending_blocks():
             return no("order_pending")      # safety first: an unsettled order blocks all
         if not self.in_session():
-            return no("outside_session", start=self.cfg.session_start, end=self.cfg.session_end)
+            return no("outside_session", session=self.session_text(), days=self.days_text())
 
         loss = self.daily_loss()
         if loss is None:
@@ -495,8 +495,28 @@ class AutoTrader:
             return False
         start = time_of_day(*(int(x) for x in self.cfg.session_start.split(":")))
         end = time_of_day(*(int(x) for x in self.cfg.session_end.split(":")))
+        if start == end:
+            return True                       # the same time twice means all 24 hours
         now = when.time().replace(second=0, microsecond=0)
-        return start <= now < end if start <= end else (now >= start or now < end)
+        return start <= now < end if start < end else (now >= start or now < end)
+
+    def all_day(self) -> bool:
+        return self.cfg.session_start == self.cfg.session_end or (
+            self.cfg.session_start == "00:00" and self.cfg.session_end in ("24:00",))
+
+    def session_text(self) -> str:
+        """The configured hours, in words: "24 hours" or "07:00–20:00 UTC"."""
+        if self.all_day():
+            return self.t("auto.session_all")
+        return f"{self.cfg.session_start}–{self.cfg.session_end} UTC"
+
+    def days_text(self) -> str:
+        days = sorted(set(self.cfg.weekdays))
+        if days == list(range(7)):
+            return self.t("auto.days_all")
+        if days == [0, 1, 2, 3, 4]:
+            return self.t("auto.days_weekdays")
+        return self.t.join(self.t(f"auto.day.{d}") for d in days)
 
     def _pending_blocks(self) -> bool:
         """An order whose outcome is not settled blocks every new one.
@@ -673,7 +693,7 @@ class AutoTrader:
                         dry=self.t("auto.dry_run") if self.sup.config.dry_run else "",
                         risk=f"{self.risk_percent():g}",
                         instruments=", ".join(self.instruments()) or "-",
-                        start=self.cfg.session_start, end=self.cfg.session_end,
+                        hours=self.session_text(), days=self.days_text(),
                         session=self.t("auto.session_open") if self.in_session() else self.t("auto.session_closed"),
                         open=("-" if open_count is None else open_count),
                         cap=self.cfg.max_open_positions,
@@ -682,6 +702,10 @@ class AutoTrader:
                         minimum=f"{self.cfg.min_signal_strength:g}")]
         if not self.cfg.enabled:
             lines.append(self.t("auto.not_enabled_short"))
+        if self.sup.config.news.provider == "none" and self.cfg.min_signal_strength > 0:
+            # Without news the strength is capped at 70: say what the minimum really asks for.
+            lines.append(self.t("auto.strength_note", minimum=f"{self.cfg.min_signal_strength:g}",
+                                need=f"{self.cfg.min_signal_strength / 0.7:.0f}"))
         if loss and loss[1] >= self.cfg.daily_loss_limit_percent - 1e-9:
             lines.append(self.t("auto.status_blocked"))
         if recent:

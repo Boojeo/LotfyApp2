@@ -142,7 +142,7 @@ continues.
 **What it checks, in this order, for one instrument every `auto.scan_minutes`:**
 
 1. instrument permitted (`auto.instruments`, else the watchlist)
-2. no unsettled earlier order; trading session (`session_start`–`session_end`
+2. no unsettled earlier order; trading session (24 hours by default; set `session_start`–`session_end`
    UTC, on `weekdays`)
 3. daily loss limit not reached (`daily_loss_limit_percent` of the day's starting
    equity; equity is read from the account, so deposits and withdrawals during

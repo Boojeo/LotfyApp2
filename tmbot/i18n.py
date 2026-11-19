@@ -971,14 +971,14 @@ CATALOG: Dict[str, Dict[str, str]] = {
         "en": "🤖 Automatic trading is ON ({env}){dry}.\n"
               "Risk {risk}% per trade | daily loss limit {limit}% | up to {cap} open deals\n"
               "Instruments: {instruments}\n"
-              "Sessions: {start}–{end} UTC, Mon–Fri\n"
+              "Sessions: {session}, {days}\n"
               "Only APPROVED, aligned, strong signals are traded, each with its stop set at "
               "the broker. /auto_off stops new entries at once; open trades keep being "
               "managed. /panic closes everything after a confirmation.",
         "ar": "🤖 التداول الآلي يعمل ({env}){dry}.\n"
               "المخاطرة {risk}% للصفقة | حد الخسارة اليومي {limit}% | حتى {cap} صفقات مفتوحة\n"
               "الأدوات: {instruments}\n"
-              "الجلسات: {start}–{end} بتوقيت UTC، من الإثنين إلى الجمعة\n"
+              "الجلسات: {session}، {days}\n"
               "تُتداول فقط الإشارات المقبولة والمتوافقة والقوية، ولكل صفقة وقفها عند الوسيط. "
               "‎/auto_off‎ يوقف الدخول الجديد فورًا والصفقات المفتوحة تبقى مُدارة. "
               "‎/panic‎ يغلق كل شيء بعد التأكيد.",
@@ -1075,19 +1075,37 @@ CATALOG: Dict[str, Dict[str, str]] = {
     },
     "auto.state_on": {"en": "ON", "ar": "يعمل"},
     "auto.state_off": {"en": "OFF", "ar": "متوقف"},
+    "auto.session_all": {"en": "24 hours", "ar": "على مدار 24 ساعة"},
+    "auto.days_all": {"en": "every day", "ar": "كل يوم"},
+    "auto.days_weekdays": {"en": "Mon–Fri", "ar": "من الإثنين إلى الجمعة"},
+    "auto.day.0": {"en": "Mon", "ar": "الإثنين"},
+    "auto.day.1": {"en": "Tue", "ar": "الثلاثاء"},
+    "auto.day.2": {"en": "Wed", "ar": "الأربعاء"},
+    "auto.day.3": {"en": "Thu", "ar": "الخميس"},
+    "auto.day.4": {"en": "Fri", "ar": "الجمعة"},
+    "auto.day.5": {"en": "Sat", "ar": "السبت"},
+    "auto.day.6": {"en": "Sun", "ar": "الأحد"},
     "auto.session_open": {"en": "open now", "ar": "مفتوحة الآن"},
     "auto.session_closed": {"en": "closed now", "ar": "مغلقة الآن"},
     "auto.status": {
         "en": "🤖 Automatic trading: {state} ({env}){dry}\n"
               "Risk {risk}% per trade | strength at least {minimum}/100\n"
               "Instruments: {instruments}\n"
-              "Session {start}–{end} UTC Mon–Fri: {session}\n"
+              "Session {hours}, {days}: {session}\n"
               "Open deals {open} of {cap} | daily loss limit {limit}% ({used}% used)",
         "ar": "🤖 التداول الآلي: {state} ({env}){dry}\n"
               "المخاطرة {risk}% للصفقة | قوة الإشارة لا تقل عن {minimum}/100\n"
               "الأدوات: {instruments}\n"
-              "الجلسة {start}–{end} UTC من الإثنين إلى الجمعة: {session}\n"
+              "الجلسة {hours}، {days}: {session}\n"
               "الصفقات المفتوحة {open} من {cap} | حد الخسارة اليومي {limit}% (مستخدم {used}%)",
+    },
+    "auto.strength_note": {
+        "en": "⚠️ No news source is set, so signal strength can never exceed 70 (the missing news "
+              "keeps its 30% weight). A minimum of {minimum} therefore needs a technical "
+              "confidence above {need}, which is rare. /why shows how many plans reach it.",
+        "ar": "⚠️ لا يوجد مصدر أخبار لذلك لا تتجاوز قوة الإشارة 70 أبدًا (الأخبار الغائبة تحتفظ "
+              "بوزنها 30%). لذلك يتطلب الحد الأدنى {minimum} ثقة فنية أعلى من {need} وهذا نادر. "
+              "‎/why‎ يعرض كم خطة تبلغه.",
     },
     "auto.status_blocked": {
         "en": "🛑 The daily loss limit is reached: no new entries until tomorrow.",
@@ -1129,8 +1147,8 @@ CATALOG: Dict[str, Dict[str, str]] = {
     },
     "auto.reject.not_permitted": {"en": "not a permitted instrument", "ar": "أداة غير مسموح بها"},
     "auto.reject.outside_session": {
-        "en": "outside the trading session ({start}–{end} UTC, Mon–Fri)",
-        "ar": "خارج جلسة التداول ({start}–{end} UTC، من الإثنين إلى الجمعة)",
+        "en": "outside the trading session ({session}, {days})",
+        "ar": "خارج جلسة التداول ({session}، {days})",
     },
     "auto.reject.equity_unknown": {
         "en": "the account equity could not be read, so nothing is opened",

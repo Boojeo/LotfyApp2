@@ -228,7 +228,35 @@ class GateTests(Harness):
         self.sup.config.auto.instruments = ["SILVER"]
         self.assertEqual(self.auto.evaluate("GOLD").reason, "not_permitted")
 
+    def test_the_default_is_24_hours_on_weekdays_only(self):
+        for hour in (0, 3, 6, 7, 12, 19, 20, 23):
+            self.now = datetime(2026, 10, 27, hour, 30, tzinfo=UTC)
+            self.assertTrue(self.auto.in_session(), hour)
+        for when in (datetime(2026, 10, 31, 12, 0, tzinfo=UTC), datetime(2026, 11, 1, 3, 0, tzinfo=UTC)):
+            self.assertFalse(self.auto.in_session(when), when)
+
+    def test_the_same_time_twice_means_all_day_whatever_it_is(self):
+        self.sup.config.auto.session_start = self.sup.config.auto.session_end = "07:00"
+        self.assertTrue(self.auto.in_session(datetime(2026, 10, 27, 3, 0, tzinfo=UTC)))
+        self.assertEqual(self.auto.session_text(), "24 hours")
+
+    def test_weekends_can_be_added(self):
+        self.sup.config.auto.weekdays = [0, 1, 2, 3, 4, 5, 6]
+        self.assertTrue(self.auto.in_session(datetime(2026, 11, 1, 12, 0, tzinfo=UTC)))
+        self.assertEqual(self.auto.days_text(), "every day")
+
+    def test_the_messages_say_what_is_configured(self):
+        self.assertEqual((self.auto.session_text(), self.auto.days_text()), ("24 hours", "Mon–Fri"))
+        self.sup.config.auto.session_start, self.sup.config.auto.session_end = "07:00", "20:00"
+        self.sup.config.auto.weekdays = [0, 2, 4]
+        self.assertEqual((self.auto.session_text(), self.auto.days_text()), ("07:00–20:00 UTC", "Mon, Wed, Fri"))
+        self.now = datetime(2026, 10, 27, 6, 0, tzinfo=UTC)
+        verdict = self.auto.evaluate("GOLD")
+        self.assertEqual(verdict.reason, "outside_session")
+        self.assertIn("outside the trading session (07:00–20:00 UTC, Mon, Wed, Fri)", self.t(verdict))
+
     def test_outside_the_session_and_on_weekends(self):
+        self.sup.config.auto.session_start, self.sup.config.auto.session_end = "07:00", "20:00"
         for when in (datetime(2026, 10, 27, 6, 59, tzinfo=UTC),    # before the open
                      datetime(2026, 10, 27, 20, 0, tzinfo=UTC),    # the end is exclusive
                      datetime(2026, 10, 31, 12, 0, tzinfo=UTC),    # Saturday
@@ -719,9 +747,24 @@ class ReportTests(Harness):
         self.assertIn("Automatic trading: ON (DEMO)", text)
         self.assertIn("Risk 1% per trade", text)
         self.assertIn("Instruments: GOLD", text)
-        self.assertIn("Session 07:00–20:00 UTC Mon–Fri: open now", text)
+        self.assertIn("Session 24 hours, Mon–Fri: open now", text)
         self.assertIn("Open deals 0 of 3", text)
         self.assertIn("daily loss limit 3% (0% used)", text)
+
+    def test_with_no_news_source_the_status_says_what_the_minimum_really_asks_for(self):
+        self.sup.config.news.provider = "none"
+        text = self.auto.status_command()
+        self.assertIn("signal strength can never exceed 70", text)
+        self.assertIn("minimum of 60 therefore needs a technical confidence above 86", text)
+        self.sup.config.news.provider = "marketaux"
+        self.assertNotIn("can never exceed 70", self.auto.status_command())
+
+    def test_the_session_wording_renders_in_arabic(self):
+        self.sup.t = Translator("ar")
+        self.turn_on()
+        for text in (self.auto.status_command(), self.auto.on_command("")):
+            self.assertNotIn("[auto.", text)
+        self.assertIn("على مدار 24 ساعة", self.auto.status_command())
 
     def test_status_says_when_the_config_will_refuse(self):
         self.sup.config.auto.enabled = False
@@ -806,7 +849,7 @@ class ConfigTests(unittest.TestCase):
         self.assertFalse(c.auto.enabled)
         self.assertFalse(c.auto.allow_live)
         self.assertEqual((c.auto.daily_loss_limit_percent, c.report.risk_percent), (3.0, 1.0))
-        self.assertEqual((c.auto.session_start, c.auto.session_end), ("07:00", "20:00"))
+        self.assertEqual((c.auto.session_start, c.auto.session_end), ("00:00", "00:00"))   # 24 hours
         self.assertEqual(c.auto.weekdays, [0, 1, 2, 3, 4])
         c.validate()
 
