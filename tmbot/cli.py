@@ -6,6 +6,7 @@ import argparse
 import logging
 import signal
 import sys
+from pathlib import Path
 from typing import List, Optional
 
 from . import config as config_module
@@ -67,6 +68,24 @@ def build_parser() -> argparse.ArgumentParser:
                             "a large value isolates trade quality from affordability")
     audit.add_argument("--limit", type=int, default=None,
                        help="only the most recent N decisions (default: all)")
+    audit.add_argument("--shadow", action="store_true",
+                       help="also compute the three-part (technical / fundamental / overall) analysis "
+                            "for each replayed decision and print old-vs-new; in memory only, "
+                            "your config file is not touched and nothing trades")
+    audit.add_argument("--records", metavar="FILE", default=None,
+                       help="export one row per decision (old and new scores, every check, "
+                            "outcome) to a NEW .csv or .jsonl file; implies --shadow; an existing "
+                            "file is never overwritten")
+
+    compare = sub.add_parser(
+        "compare",
+        help="old score vs the three-part analysis on the plans stored while scoring.mode was "
+             "'shadow' (read-only: opens the database read-only, changes nothing)",
+    )
+    compare.add_argument("days", nargs="?", type=int, default=7, help="how far back (default 7)")
+    compare.add_argument("--epic", default=None, help="only this instrument")
+    compare.add_argument("--records", metavar="FILE", default=None,
+                         help="also export one row per stored plan to a NEW .csv or .jsonl file")
 
     markets = sub.add_parser(
         "markets", help="search for an instrument to find the epic name to use"
@@ -131,6 +150,31 @@ def _load_config(args: argparse.Namespace) -> Config:
         config.language = args.lang
     config.validate(connecting=not inspecting)
     return config
+
+
+def _compare_command(args: argparse.Namespace, config: Config) -> int:
+    """Read-only: stored plans -> old vs new report (and optionally an export)."""
+    from datetime import timedelta
+
+    from .analysis import compare as compare_module
+    from .i18n import Translator
+    from .models import utcnow
+
+    if args.records and Path(args.records).exists():
+        print(f"{args.records} already exists; choose a new file name (nothing is overwritten)",
+              file=sys.stderr)
+        return 2
+    epic = config.canonical_epic(args.epic) if args.epic else None
+    plans = compare_module.read_plans(config.resolved_database,
+                                      utcnow() - timedelta(days=max(1, args.days)), epic)
+    minimum = config.auto.min_signal_strength
+    records = compare_module.records_from_plans(plans, min_strength=minimum, t=Translator("en"))
+    print(f"{len(plans)} stored plans from the last {args.days} days "
+          f"({sum(1 for p in plans if p.shadow)} with a shadow analysis)")
+    print(compare_module.render(compare_module.compare(records, min_strength=minimum)))
+    if args.records:
+        print(f"wrote {compare_module.write_records(args.records, records)} rows to {args.records}")
+    return 0
 
 
 def _build_notifier(config: Config, store: Store) -> Notifier:
@@ -250,6 +294,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     if (config.broker.environment == "live" and not config.dry_run
             and args.command not in ("envs", "check", "doctor", "journal")):
         log.warning("LIVE environment selected -- real orders can be modified")
+
+    if args.command == "compare":
+        return _compare_command(args, config)     # before Store(): it must not touch the database
 
     store = Store(config.resolved_database)
     broker = build_broker(config.broker)
@@ -618,6 +665,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             if not epic:
                 print("no epic given and the watchlist is empty", file=sys.stderr)
                 return 2
+            from .analysis import compare as compare_module
+            if args.records and Path(args.records).exists():
+                print(f"{args.records} already exists; choose a new file name (nothing is overwritten)",
+                      file=sys.stderr)
+                return 2
+            if args.shadow or args.records:
+                config.scoring.mode = "shadow"      # in memory only: the config file is never written
             print(f"fetching up to {args.bars} candles per timeframe for {epic} ...", file=sys.stderr)
             histories = replay_module.fetch_histories(broker, epic, args.bars)
             counts = {tf: len(bars) for tf, bars in histories.items()}
@@ -637,6 +691,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return 1
             print(replay_module.render(replay_module.summarise(records), epic=epic,
                                        step=args.step, horizon=horizon, equity=args.equity))
+            if config.scoring.mode == "shadow":
+                print()
+                print(compare_module.render(compare_module.compare(
+                    records, min_strength=config.auto.min_signal_strength)))
+            if args.records:
+                print(f"wrote {compare_module.write_records(args.records, records)} rows to {args.records}")
             return 0
 
         if args.command == "report":

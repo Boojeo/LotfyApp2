@@ -56,6 +56,35 @@ def auto_blocker(plan: TradePlan, *, min_strength: float, t: Translator) -> str:
     return PASS
 
 
+def gate_results(plan: TradePlan, *, min_strength: float, t: Translator) -> List[Dict[str, Any]]:
+    """EVERY plan-level automatic-mode check, pass or fail, in ``auto_blocker``'s order.
+
+    ``auto_blocker`` stops at the first failure; this keeps going so a record shows
+    all the reasons a signal passed or failed. A test checks that the first failing
+    entry here is exactly what ``auto_blocker`` returns. Read-only.
+    """
+    found = plan.assessment or {}
+    sizing = plan.sizing or {}
+    directional = not plan.advisory_only and plan.bias.direction is not None
+    zone = plan.entry_zone
+    risk_key = ("risk_unchecked" if not sizing or sizing.get("verdict") == "UNCHECKED"
+                else "risk_rejected")
+    risk_ok = (risk_key == "risk_rejected" and sizing.get("verdict") in ("OK", "REDUCED_LEGS")
+               and bool(sizing.get("legs")))
+    checks = [
+        ("direction", directional, "no_direction"),
+        ("with_bias", directional and plan.bias.direction is plan.direction, "against_bias"),
+        ("approved", found.get("verdict") == "APPROVED", f"not_approved:{found.get('verdict', '-')}"),
+        ("strength", plan.confidence >= min_strength, "weak_signal"),
+        ("aligned", found.get("alignment") == "ALIGNED", "not_aligned"),
+        ("risk", risk_ok, risk_key),
+        ("doubtful", not report_module.detail_reasons(plan, t), "doubtful"),
+        ("entry_range", not (zone is not None and zone and not zone.get("valid")), "entry_range"),
+    ]
+    return [{"gate": gate, "passed": bool(ok), "blocker": "" if ok else blocker}
+            for gate, ok, blocker in checks]
+
+
 def manual_blocker(plan: TradePlan) -> str:
     """What the report's verdict cited (its own translation key)."""
     found = plan.assessment or {}

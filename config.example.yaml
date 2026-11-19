@@ -241,3 +241,12 @@ protection:
   grace_seconds: 20              # after our own change, before a mismatch counts
   repair_cooldown_seconds: 60    # between repairs of the same deal
   max_repairs: 3                 # then it only alerts; it never loops against the broker
+
+# THREE-PART ANALYSIS (technical / fundamental / overall). Shadow only.
+#   legacy (default): nothing new is computed or shown; only the existing scoring runs.
+#   shadow: each plan also gets a Technical, a Fundamental and an Overall result, shown in
+#           Telegram and stored, for comparison. It NEVER changes the bias, the signal
+#           strength, the verdict, any automatic-mode check or any order. There is no
+#           setting that trades on it. Missing news is "unavailable", never bullish/bearish.
+scoring:
+  mode: legacy                   # legacy | shadow

@@ -61,6 +61,16 @@ class WhyService:
             lines.append(t("why.strength", median=f"{s['strength_median']:.0f}",
                            top=f"{s['strength_max']:.0f}", minimum=f"{minimum:g}",
                            ok=s["strength_ok"], d=s["directional"]))
+        shadowed = [p for p in plans if p.shadow]
+        if shadowed:        # shadow scoring only: comparison, never used for a decision
+            old = sum(1 for p in shadowed if not p.advisory_only and p.bias.direction is not None
+                      and p.confidence >= minimum)
+            new = sum(1 for p in shadowed
+                      if p.shadow["overall"]["direction"] != "NEUTRAL"
+                      and p.shadow["overall"]["strength"] >= minimum)
+            only = sum(1 for p in shadowed if p.shadow["overall"]["basis"] == "technical_only")
+            lines.append(t("why.shadow", n=len(shadowed), minimum=f"{minimum:g}", old=old, new=new,
+                           only=only))
         if len(s["epics"]) > 1 or epic is None:
             lines.append(t("why.per_epic"))
             for name, row in sorted(s["epics"].items()):
