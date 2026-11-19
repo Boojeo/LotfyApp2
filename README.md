@@ -877,3 +877,34 @@ python -m unittest discover -s tests -t .
 - `NEUTRAL` plans are marked advisory-only: levels are still published and a
   position will still be managed, but nothing in the report argues for taking
   the trade.
+
+## Three-part analysis (shadow mode) and the old-vs-new comparison
+
+Off by default (`scoring.mode: legacy`). Set `scoring.mode: shadow` and every plan also carries
+three separate results, shown in the short and the full Telegram message and stored with the plan:
+
+* **Technical (0-100)**: direction, strength, the factors behind it, conflicting signals and weaknesses.
+  It never depends on news.
+* **Fundamental (0-100)**: direction, strength, the headlines used (source, publication time, age),
+  and a data-quality figure = reliability x freshness x coverage. Headlines that are too old or have no
+  timestamp are left out and listed. With no usable news it says **unavailable**: that is never counted
+  as bullish, bearish or neutral.
+* **Overall (0-100)**: combined by direction and data quality, not a plain average (weights 70% technical,
+  30% x data quality for the fundamental). It says whether the two agree, partly agree or contradict, which
+  is stronger, and how reliable the conclusion is. With no fundamental data it is explicitly "technical
+  only".
+
+None of this feeds any decision: the bias, the signal strength, the 60 minimum, the verdict, the
+automatic-mode checks and every order still use the existing scoring (a parity test proves it).
+`scoring.mode: legacy` switches it all off at once.
+
+```
+python -m tmbot --env demo --config config.yaml audit XAUUSDm --bars 5000 --equity 100000 --records xau.csv
+python -m tmbot --env demo --config config.yaml compare 14 --records plans.csv
+```
+
+`audit --shadow/--records` replays past decisions and prints old vs new (how many reach 40/50/60/70, why
+setups failed each check, a hypothetical count, and how each level fared). `compare` does the same on
+the plans stored while shadow was on. Both are read-only: the database is opened read-only, nothing is
+traded, and an export file that already exists is never overwritten. `/why` shows a one-line old-vs-new
+count when shadow plans exist.

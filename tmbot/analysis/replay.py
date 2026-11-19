@@ -160,6 +160,11 @@ class Record:
     sizing: str
     directional: bool
     outcome: Dict[str, Any] = field(default_factory=dict)
+    # Every automatic-mode check, pass or fail, and the shadow three-part analysis
+    # (empty unless scoring.mode is "shadow"). Recorded, never used to decide.
+    gates: List[Dict[str, Any]] = field(default_factory=list)
+    shadow: Dict[str, Any] = field(default_factory=dict)
+    epic: str = ""
 
 
 def replay(
@@ -194,6 +199,8 @@ def replay(
             directional=not plan.advisory_only and plan.bias.direction is not None,
             outcome=outcome(plan.direction, plan.reference_price, plan.sl, plan.targets,
                             later, horizon),
+            gates=funnel.gate_results(plan, min_strength=min_strength, t=t),
+            shadow=plan.shadow, epic=epic,
         ))
         if progress:
             progress(count + 1, len(indexes))

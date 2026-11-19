@@ -19,6 +19,8 @@ from . import fundamental as fundamental_module
 from . import odds as odds_module
 from . import news as news_module
 from . import quality as quality_module
+from . import scoring as scoring_module
+from . import shadow_text
 from . import structure as structure_module
 from . import style as style_module
 from .levels import build_plan
@@ -157,7 +159,26 @@ class ReportBuilder:
         )
         plan.entry_zone = self._entry_zone(plan, rules, quote, sizing)
         plan.odds = self._odds(epic, plan, profile.entry_timeframe, entry)
+        plan.shadow = self._shadow(plan, technical, fundamental, headlines)
         return plan
+
+    def _shadow(self, plan: TradePlan, technical, fundamental, headlines) -> Dict[str, Any]:
+        """The three-part analysis, for display and records only. Nothing reads it to decide.
+
+        Off unless ``scoring.mode`` is "shadow". It runs after the plan is complete, on
+        copies of what the plan already holds, and any failure just leaves it empty.
+        """
+        if self.config.scoring.mode != "shadow":
+            return {}
+        try:
+            return scoring_module.compute(
+                technical, fundamental, headlines, legacy_strength=plan.confidence,
+                legacy_bias=plan.bias, provider=getattr(self.news_provider, "name", "none"),
+                lookback_hours=self.config.analysis.news_lookback_hours, now=utcnow(),
+            )
+        except Exception:
+            log.exception("%s: shadow analysis failed; continuing without it", plan.epic)
+            return {}
 
     def _entry_zone(self, plan: TradePlan, rules, quote, sizing) -> Dict[str, Any]:
         """The acceptable entry range for this plan -- derived from rules that already apply."""
@@ -594,6 +615,7 @@ def report_sections(plan: TradePlan, t: Translator) -> List[str]:
     chance = loss_probability(plan)
     lines = [
         *_verdict_text(plan, t),
+        *(["", *shadow_text.full_lines(plan.shadow, t)] if plan.shadow else []),
         "", "---", "",
         t("tr.reversal_heading"),
         t("tr.reversal_rate", emoji=_REVERSAL_EMOJI[level], description=t(f"tr.reversal.{level}")),
@@ -765,6 +787,7 @@ def render_text(plan: TradePlan, t: Optional[Translator] = None, tag: str = "") 
                    for flag in found.get("flags", [])[:SHORT_FLAGS]]
         if reasons:
             lines.append("↳ " + t.semicolon.join(reasons))
+    lines += shadow_text.short_lines(plan.shadow, t)     # empty unless scoring.mode is shadow
     lines.append(t("sm.reversal", emoji=_REVERSAL_EMOJI[level], level=t.term("reversal", level),
                    percent=f"{round(chance * 100 / 5) * 5:.0f}"))
     lines += _map_lines(plan, t)

@@ -320,6 +320,10 @@ class TradePlan:
     # from before these existed.
     entry_zone: Dict[str, Any] = field(default_factory=dict)
     odds: Dict[str, Any] = field(default_factory=dict)
+    # The shadow three-part analysis (technical / fundamental / overall), see
+    # analysis.scoring. Empty unless scoring.mode is "shadow". Nothing reads it
+    # to make a decision.
+    shadow: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def management_timeframe(self) -> str:
@@ -368,6 +372,7 @@ class TradePlan:
             market=dict(self.market),
             entry_zone=dict(self.entry_zone),
             odds=dict(self.odds),
+            shadow=dict(self.shadow),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -396,6 +401,7 @@ class TradePlan:
             "market": self.market,
             "entry_zone": self.entry_zone,
             "odds": self.odds,
+            "shadow": self.shadow,
         }
 
     @classmethod
@@ -425,6 +431,7 @@ class TradePlan:
             market=raw.get("market") or {},
             entry_zone=raw.get("entry_zone") or {},
             odds=raw.get("odds") or {},
+            shadow=raw.get("shadow") or {},
         )
 
 

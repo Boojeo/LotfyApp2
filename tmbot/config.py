@@ -364,6 +364,23 @@ class AutoConfig:
     confirm_seconds: float = 120.0     # how long a live /auto_on or /panic code lasts
 
 
+SCORING_MODES = ("legacy", "shadow")
+
+
+@dataclass
+class ScoringConfig:
+    """The three-part analysis (technical / fundamental / overall).
+
+    ``legacy`` (the default): only the existing scoring runs; nothing new is
+    computed or shown. ``shadow``: the three-part analysis is computed and
+    shown next to the old score, and stored on each plan, but it NEVER feeds
+    the bias, strength, quality verdict, any gate or any order. Shadow must be
+    switched on by you; there is deliberately no mode that trades on it.
+    """
+
+    mode: str = "legacy"               # legacy | shadow
+
+
 @dataclass
 class ExitAdviceConfig:
     """Tested odds and exit recommendations. Advice only: nothing is executed
@@ -404,6 +421,7 @@ class Config:
     auto: AutoConfig = field(default_factory=AutoConfig)
     exit_advice: ExitAdviceConfig = field(default_factory=ExitAdviceConfig)
     protection: ProtectionConfig = field(default_factory=ProtectionConfig)
+    scoring: ScoringConfig = field(default_factory=ScoringConfig)
     database: str = "tmbot.sqlite3"
     log_level: str = "INFO"
     dry_run: bool = False
@@ -606,6 +624,9 @@ class Config:
         if guard.audit_seconds <= 0 or guard.grace_seconds < 0 or guard.max_repairs < 1:
             raise ConfigError("protection.audit_seconds must be positive, grace_seconds "
                               "not negative and max_repairs at least 1")
+        if self.scoring.mode not in SCORING_MODES:
+            raise ConfigError("scoring.mode must be 'legacy' or 'shadow' "
+                              "(there is no mode that trades on the new analysis)")
         if self.management.on_indivisible_size not in ("hold", "close_all"):
             raise ConfigError("management.on_indivisible_size must be 'hold' or 'close_all'")
 
@@ -678,6 +699,7 @@ _NESTED = {
     "AutoConfig": AutoConfig,
     "ExitAdviceConfig": ExitAdviceConfig,
     "ProtectionConfig": ProtectionConfig,
+    "ScoringConfig": ScoringConfig,
     "StyleConfig": StyleConfig,
 }
 
